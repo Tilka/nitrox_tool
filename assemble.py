@@ -1,14 +1,17 @@
 #!/usr/bin/env python3
 
+import re
 import struct
+import sys
 
 instruction_list = []
 instruction_dict = {}
 
 class Operand:
-	def __init__(self, name, enc):
-		self.is_register = name.startswith('reg_')
-		self.name = name.removeprefix('reg_')
+	def __init__(self, desc, enc):
+		matches = re.search(r'(?P<is_register>r?)\{(?P<name>[^:}]+)(:[^}]+)?\}', desc)
+		self.name = matches.group('name')
+		self.is_register = len(matches.group('is_register')) > 0
 		self.mask = self.compute_mask(self.name[0], enc)
 
 	def compute_mask(self, char, enc):
@@ -41,10 +44,7 @@ class Operand:
 				size += 1
 			inst >>= 1
 			mask >>= 1
-		if self.is_register:
-			return f'r{value}'
-		else:
-			return f'0x{value:x}'
+		return value
 
 	def __repr__(self):
 		return f'{self.name} ({self.mask:016b})'
@@ -56,8 +56,7 @@ def instruction(cls):
 	cls.encoding_mask = int(mask, 2)
 	cls.encoding_value = int(value, 2)
 	cls.name = cls.__name__
-	cls.operand_list = [Operand(op, enc) for op in cls.operands.split(', ') if op != '']
-	#print(cls.name, cls.operands, cls.operand_list)
+	cls.operand_list = [Operand(op, enc) for op in cls.operands.split(',') if op != '']
 	instruction_list.append(cls)
 	assert cls.name not in instruction_dict
 	instruction_dict[cls.name] = cls
@@ -70,57 +69,57 @@ class nop:
 
 @instruction
 class seg:
-	operands = 'seg'
-	encoding = '0000 0000 0000 00ss'
+	operands = '{seg}'
+	encoding = '0000 0000 0000 00s1'
 
 @instruction
 class jz:
-	operands = 'addr'
+	operands = '0x{addr:04x}'
 	encoding = 'aa11 0aaa aaaa aaaa'
 
 @instruction
 class jnz:
-	operands = 'addr'
+	operands = '0x{addr:04x}'
 	encoding = 'aa01 0aaa aaaa aaaa'
 
 @instruction
 class jc:
-	operands = 'addr'
+	operands = '0x{addr:04x}'
 	encoding = 'aa01 1aaa aaaa aaaa'
 
 @instruction
 class call:
-	operands = 'addr'
+	operands = '0x{addr:04x}'
 	encoding = 'aa11 1aaa aaaa aaaa'
 
 @instruction
 class ret_1000:
-	operands = 'imm1'
+	operands = '{imm1}'
 	encoding = 'i000 0001 0000 0000'
 
 @instruction
 class ret_px:
-	operands = 'imm1'
+	operands = '{imm1}'
 	encoding = '0000 0010 i000 0000'
 
 @instruction
 class mov:
-	operands = 'reg_dst, imm8'
+	operands = 'r{dst}, 0x{imm8:02x} # {imm8}'
 	encoding = '0000 1ddd iiii iiii'
 
 @instruction
 class sub:
-	operands = 'reg_dst, reg_lhs, reg_rhs'
+	operands = 'r{dst}, r{lhs}, r{rhs}'
 	encoding = '0110 0ddd 11rr rlll'
 
 @instruction
 class subi:
-	operands = 'reg_dst, reg_src, imm3'
+	operands = 'r{dst}, r{src}, {imm3}'
 	encoding = '1110 0ddd 11ii isss'
 
 @instruction
 class dw:
-	operands = 'imm16'
+	operands = '0x{imm16:04x}'
 	encoding = 'iiii iiii iiii iiii'
 
 class Disassembler:
@@ -130,8 +129,8 @@ class Disassembler:
 	def disassemble(self, word):
 		for inst in instruction_list:
 			if word & inst.encoding_mask == inst.encoding_value:
-				operands = ', '.join([op.decode(word) for op in inst.operand_list])
-				return f'{inst.name}\t{operands}'
+				operands = {op.name: op.decode(word) for op in inst.operand_list}
+				return f'{inst.name}'.ljust(10) + inst.operands.format(**operands)
 		raise NotImplementedError('unknown instruction')
 
 class Assembler:
@@ -143,21 +142,17 @@ class Assembler:
 	def assemble(self, line):
 		line = line.split('#')[0].strip()
 		if not line:
-			return b''
+			return None
 		if line.endswith(':'):
 			label = line[:-1]
 			self.label_to_addr[label] = self.address
 			self.addr_to_label[self.address] = label
-			return b''
+			return None
 		components = line.split(None, 1)
 		opcode = components[0]
 		arguments = []
 		if len(components) == 2:
 			arguments = [arg.strip() for arg in components[1].split(',')]
-		if opcode == '.org':
-			self.address = int(arguments[0], 16)
-			return b''
-		
 		inst = instruction_dict[opcode]
 		word = inst.encoding_value
 		for i, param in enumerate(inst.operand_list):
@@ -223,17 +218,22 @@ class Microcode:
 def disassemble(args):
 	mc = Microcode(path=args.filename)
 	disasm = Disassembler()
+	if args.output:
+		output = open(args.output, 'w+')
+	else:
+		output = sys.stdout
 	for address in range(len(mc.code) // 4):
 		word = read4(mc.code[address*4:address*4+4]) & 0xFFFF
-		#print(f'{address:04x}: {word:04x}', disasm.disassemble(word))
-		print(disasm.disassemble(word))
+		print('\t' + disasm.disassemble(word).ljust(30) + f'# {address:04x}: {word:04x}', file=output)
 
 def assemble(args):
 	asm = Assembler()
 	mc = Microcode()
 	with open(args.filename) as f:
 		for line in f:
-			mc.code.append(asm.assemble(line))
+			word = asm.assemble(line)
+			if word is not None:
+				mc.code.append(word)
 	mc.save(args.output)
 
 if __name__ == '__main__':
