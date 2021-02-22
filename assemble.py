@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import binascii
 import re
 import struct
 import sys
@@ -123,10 +124,27 @@ class dw:
 	encoding = 'iiii iiii iiii iiii'
 
 class Disassembler:
-	def __init__(self):
+	def __init__(self, args):
 		self.segment = 0
+		self.mc = mc = Microcode(path=args.filename)
+		if args.output:
+			output = open(args.output, 'w+')
+		else:
+			output = sys.stdout
+		print(f'.type {mc.mc_type}', file=output)
+		print(f'.version {mc.version.decode("ascii")}', file=output)
+		print(f'.sram_addr 0x{mc.sram_addr:04x}', file=output)
+		for i in range(0, len(mc.code), 4):
+			address = i // 4
+			word = struct.unpack('>I', mc.code[i:i+4])[0] & 0xFFFF
+			print('\t' + self.instruction(word).ljust(30) + f'# {address:04x}: {word:04x}', file=output)
+		for i in range(0, len(mc.data), 8):
+			word = mc.data[i:i+8]
+			hex_word = ' '.join([f'{byte:02x}' for byte in word])
+			readable = ''.join([chr(c) if c < 127 and c >= 32 else '.' for c in word])
+			print(f'\t.data {hex_word} # {i:04x}: {readable}', file=output)
 	
-	def disassemble(self, word):
+	def instruction(self, word):
 		for inst in instruction_list:
 			if word & inst.encoding_mask == inst.encoding_value:
 				operands = {op.name: op.decode(word) for op in inst.operand_list}
@@ -134,12 +152,19 @@ class Disassembler:
 		raise NotImplementedError('unknown instruction')
 
 class Assembler:
-	def __init__(self):
+	def __init__(self, args):
 		self.address = 0
 		self.label_to_addr = {}
 		self.addr_to_label = {}
+		self.mc = Microcode()
+		with open(args.filename) as f:
+			for line in f:
+				word = self.handle_line(line)
+				if word is not None:
+					self.mc.code.append(word)
+		self.mc.save(args.output)
 
-	def assemble(self, line):
+	def handle_line(self, line):
 		line = line.split('#')[0].strip()
 		if not line:
 			return None
@@ -153,6 +178,8 @@ class Assembler:
 		arguments = []
 		if len(components) == 2:
 			arguments = [arg.strip() for arg in components[1].split(',')]
+		if opcode.startswith('.'):
+			return getattr(self, 'handle_' + opcode[1:])(*arguments)
 		inst = instruction_dict[opcode]
 		word = inst.encoding_value
 		for i, param in enumerate(inst.operand_list):
@@ -163,38 +190,48 @@ class Assembler:
 		self.address += 1
 		return word
 
-def read4(d):
-	return struct.unpack('>I', d[0:4])[0]
+	def handle_type(self, mc_type):
+		self.mc.mc_type = int(mc_type)
 
-def round16(x):
-	return (x + 15) & ~15
+	def handle_version(self, version):
+		self.mc.version = version.encode('ascii')
+
+	def handle_sram_addr(self, addr):
+		self.mc.sram_addr = int(addr, 16)
+
+	def handle_data(self, hex_bytes):
+		self.mc.data += binascii.unhexlify(hex_bytes.replace(' ', ''))
 
 class Microcode:
-	def __init__(self, mc_type=1, version=b'CNPx-MC-SSL-MAIN-0018', sram_addr=0x1fb8, code=None, data=b'', signature=b'', path=None):
+	def __init__(self, path=None):
 		if path is not None:
 			self.load(path)
 		else:
-			self.mc_type = mc_type
-			self.version = version
-			self.sram_addr = sram_addr
-			self.code = [] if code is None else code
+			self.mc_type = 1
+			self.version = b'undefined'
+			self.sram_addr = 0
+			self.code = []
 			self.data = b''
-			self.signature = signature
+			self.signature = b''
 
 	def load(self, path):
 		with open(args.filename, 'rb') as f:
 			d = f.read()
 		self.mc_type, self.version, code_len, data_len, self.sram_addr = struct.unpack_from('>B31sIIQ', d)
+		self.version = self.version.rstrip(b'\x00')
 		if self.version.startswith(b'CNN5x'):
 			code_len *= 2
 		else:
 			code_len *= 4
 
+		def alignup16(x):
+			return (x + 15) & ~15
+
 		code_start = 0x30
 		code_end = code_start + code_len
-		data_start = round16(code_end)
+		data_start = alignup16(code_end)
 		data_end = data_start + data_len
-		sig_start = round16(data_end)
+		sig_start = alignup16(data_end)
 		sig_end = sig_start + 256
 
 		self.code = d[code_start:code_end]
@@ -211,30 +248,11 @@ class Microcode:
 	def save(self, path):
 		with open(path, 'wb+') as f:
 			f.write(struct.pack('>B31sIIQ', self.mc_type, self.version, len(self.code), len(self.data), self.sram_addr))
-			f.write(b''.join([struct.pack('>I', i << 17 | self.compute_parity(word) << 16 | word) for i, word in enumerate(self.code)]))
+			code_section = b''.join([struct.pack('>I', i << 17 | self.compute_parity(word) << 16 | word) for i, word in enumerate(self.code)])
+			code_section += b'\x00' * (16 - len(code_section) % 16)
+			f.write(code_section)
 			f.write(self.data)
 			f.write(self.signature)
-
-def disassemble(args):
-	mc = Microcode(path=args.filename)
-	disasm = Disassembler()
-	if args.output:
-		output = open(args.output, 'w+')
-	else:
-		output = sys.stdout
-	for address in range(len(mc.code) // 4):
-		word = read4(mc.code[address*4:address*4+4]) & 0xFFFF
-		print('\t' + disasm.disassemble(word).ljust(30) + f'# {address:04x}: {word:04x}', file=output)
-
-def assemble(args):
-	asm = Assembler()
-	mc = Microcode()
-	with open(args.filename) as f:
-		for line in f:
-			word = asm.assemble(line)
-			if word is not None:
-				mc.code.append(word)
-	mc.save(args.output)
 
 if __name__ == '__main__':
 	import argparse
@@ -244,6 +262,6 @@ if __name__ == '__main__':
 	parser.add_argument('-d', '--disassemble', action='store_true')
 	args = parser.parse_args()
 	if args.disassemble:
-		disassemble(args)
+		Disassembler(args)
 	else:
-		assemble(args)
+		Assembler(args)
