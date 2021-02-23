@@ -270,13 +270,16 @@ class Microcode:
 			x >>= 1
 		return parity
 
+	def pad16(self, blob):
+		len_mod_16 = len(blob) % 16
+		return blob + (b'' if len_mod_16 == 0 else b'\x00' * (16 - len_mod_16))
+
 	def save(self, path):
 		with open(path, 'wb+') as f:
 			f.write(struct.pack('>B31sIIQ', self.mc_type, self.version.encode('ascii'), len(self.code), len(self.data), self.sram_addr))
 			code = b''.join([struct.pack('>I', i << 17 | self.compute_parity(word) << 16 | word) for i, word in enumerate(self.code)])
-			padding = b'\x00' * (16 - len(code) % 16)
-			f.write(code + padding)
-			f.write(self.data)
+			f.write(self.pad16(code))
+			f.write(self.pad16(self.data))
 			f.write(self.signature)
 
 if __name__ == '__main__':
