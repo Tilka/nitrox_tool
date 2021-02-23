@@ -18,11 +18,14 @@ class Operand:
 	def compute_mask(self, char, enc):
 		return int(''.join(['1' if c == char else '0' for c in enc]), 2)
 
-	def encode(self, string):
+	def encode_string(self, string):
 		if self.is_register:
 			assert string.startswith('r')
 			string = string.removeprefix('r')
 		value = int(string, 16 if string.startswith('0x') else 10)
+		return self.encode_value(value)
+
+	def encode_value(self, value):
 		mask = self.mask
 		enc = 0
 		pos = 0
@@ -35,7 +38,7 @@ class Operand:
 		assert value == 0
 		return enc
 
-	def decode(self, inst):
+	def decode(self, inst, segment):
 		mask = self.mask
 		size = 0
 		value = 0
@@ -45,6 +48,8 @@ class Operand:
 				size += 1
 			inst >>= 1
 			mask >>= 1
+		if self.name == 'addr':
+			value |= segment << 13
 		return value
 
 	def __repr__(self):
@@ -125,19 +130,33 @@ class dw:
 
 class Disassembler:
 	def __init__(self, args):
-		self.segment = 0
+		self.seg_credits = 0
 		self.mc = mc = Microcode(path=args.filename)
 		if args.output:
 			output = open(args.output, 'w+')
 		else:
 			output = sys.stdout
 		print(f'.type {mc.mc_type}', file=output)
-		print(f'.version {mc.version.decode("ascii")}', file=output)
+		print(f'.version {mc.version}', file=output)
 		print(f'.sram_addr 0x{mc.sram_addr:04x}', file=output)
 		for i in range(0, len(mc.code), 4):
 			address = i // 4
+			if self.seg_credits == 0:
+				self.segment = address >> 13
+			else:
+				self.seg_credits -= 1
 			word = struct.unpack('>I', mc.code[i:i+4])[0] & 0xFFFF
-			print('\t' + self.instruction(word).ljust(30) + f'# {address:04x}: {word:04x}', file=output)
+			opcode, operands = self.instruction(word)
+			asm = opcode.ljust(10) + operands
+			print('\t' + asm.ljust(30) + f'# {address:04x}: {word:04x}', file=output)
+			if opcode.startswith('ret'):
+				print(file=output)
+			# hack to make segmented addressing work
+			elif opcode == 'seg':
+				self.segment = (word >> 1) & 1
+				self.seg_credits = 2
+			elif opcode == 'call':
+				self.seg_credits = 0
 		for i in range(0, len(mc.data), 8):
 			word = mc.data[i:i+8]
 			hex_word = ' '.join([f'{byte:02x}' for byte in word])
@@ -147,32 +166,32 @@ class Disassembler:
 	def instruction(self, word):
 		for inst in instruction_list:
 			if word & inst.encoding_mask == inst.encoding_value:
-				operands = {op.name: op.decode(word) for op in inst.operand_list}
-				return f'{inst.name}'.ljust(10) + inst.operands.format(**operands)
+				operands = {op.name: op.decode(word, self.segment) for op in inst.operand_list}
+				return inst.name, inst.operands.format(**operands)
 		raise NotImplementedError('unknown instruction')
 
 class Assembler:
 	def __init__(self, args):
-		self.address = 0
+		self.current_address = 0
 		self.label_to_addr = {}
-		self.addr_to_label = {}
 		self.mc = Microcode()
+		self.fixups = []
 		with open(args.filename) as f:
 			for line in f:
-				word = self.handle_line(line)
-				if word is not None:
-					self.mc.code.append(word)
+				self.handle_line(line)
+		for pos, label, operand in self.fixups:
+			self.mc.code[pos] |= operand.encode_value(self.label_to_addr[label] & 0x1FFF)
 		self.mc.save(args.output)
 
 	def handle_line(self, line):
 		line = line.split('#')[0].strip()
 		if not line:
-			return None
+			return
 		if line.endswith(':'):
 			label = line[:-1]
-			self.label_to_addr[label] = self.address
-			self.addr_to_label[self.address] = label
-			return None
+			assert label not in self.label_to_addr
+			self.label_to_addr[label] = self.current_address
+			return
 		components = line.split(None, 1)
 		opcode = components[0]
 		arguments = []
@@ -184,17 +203,18 @@ class Assembler:
 		word = inst.encoding_value
 		for i, param in enumerate(inst.operand_list):
 			arg = arguments[i]
-			if param.name == 'addr' and arg in self.label_to_addr:
-				arg = str(self.label_to_addr[arg] & 0x1FFF)
-			word |= param.encode(arg)
-		self.address += 1
-		return word
+			if param.name == 'addr' and not arg.startswith('0x'):
+				self.fixups.append((self.current_address, arg, param))
+			else:
+				word |= param.encode_string(arg)
+		self.mc.code.append(word)
+		self.current_address += 1
 
 	def handle_type(self, mc_type):
 		self.mc.mc_type = int(mc_type)
 
 	def handle_version(self, version):
-		self.mc.version = version.encode('ascii')
+		self.mc.version = version
 
 	def handle_sram_addr(self, addr):
 		self.mc.sram_addr = int(addr, 16)
@@ -208,7 +228,7 @@ class Microcode:
 			self.load(path)
 		else:
 			self.mc_type = 1
-			self.version = b'undefined'
+			self.version = 'undefined'
 			self.sram_addr = 0
 			self.code = []
 			self.data = b''
@@ -218,8 +238,8 @@ class Microcode:
 		with open(args.filename, 'rb') as f:
 			d = f.read()
 		self.mc_type, self.version, code_len, data_len, self.sram_addr = struct.unpack_from('>B31sIIQ', d)
-		self.version = self.version.rstrip(b'\x00')
-		if self.version.startswith(b'CNN5x'):
+		self.version = self.version.rstrip(b'\x00').decode('ascii')
+		if self.version.startswith('CNN5x'):
 			code_len *= 2
 		else:
 			code_len *= 4
@@ -247,10 +267,10 @@ class Microcode:
 
 	def save(self, path):
 		with open(path, 'wb+') as f:
-			f.write(struct.pack('>B31sIIQ', self.mc_type, self.version, len(self.code), len(self.data), self.sram_addr))
-			code_section = b''.join([struct.pack('>I', i << 17 | self.compute_parity(word) << 16 | word) for i, word in enumerate(self.code)])
-			code_section += b'\x00' * (16 - len(code_section) % 16)
-			f.write(code_section)
+			f.write(struct.pack('>B31sIIQ', self.mc_type, self.version.encode('ascii'), len(self.code), len(self.data), self.sram_addr))
+			code = b''.join([struct.pack('>I', i << 17 | self.compute_parity(word) << 16 | word) for i, word in enumerate(self.code)])
+			padding = b'\x00' * (16 - len(code) % 16)
+			f.write(code + padding)
 			f.write(self.data)
 			f.write(self.signature)
 
