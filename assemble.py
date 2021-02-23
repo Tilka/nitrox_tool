@@ -38,7 +38,7 @@ class Operand:
 		assert value == 0
 		return enc
 
-	def decode(self, inst, segment):
+	def decode(self, inst, segment, xrefs):
 		mask = self.mask
 		size = 0
 		value = 0
@@ -50,6 +50,7 @@ class Operand:
 			mask >>= 1
 		if self.name == 'addr':
 			value |= segment << 13
+			xrefs.add(value)
 		return value
 
 	def __repr__(self):
@@ -80,22 +81,22 @@ class seg:
 
 @instruction
 class jz:
-	operands = '0x{addr:04x}'
+	operands = 'label_{addr:04x}'
 	encoding = 'aa11 0aaa aaaa aaaa'
 
 @instruction
 class jnz:
-	operands = '0x{addr:04x}'
+	operands = 'label_{addr:04x}'
 	encoding = 'aa01 0aaa aaaa aaaa'
 
 @instruction
 class jc:
-	operands = '0x{addr:04x}'
+	operands = 'label_{addr:04x}'
 	encoding = 'aa01 1aaa aaaa aaaa'
 
 @instruction
 class call:
-	operands = '0x{addr:04x}'
+	operands = 'label_{addr:04x}'
 	encoding = 'aa11 1aaa aaaa aaaa'
 
 @instruction
@@ -139,6 +140,8 @@ class Disassembler:
 		print(f'.type {mc.mc_type}', file=output)
 		print(f'.version {mc.version}', file=output)
 		print(f'.sram_addr 0x{mc.sram_addr:04x}', file=output)
+		lines = []
+		self.xrefs = set()
 		for i in range(0, len(mc.code), 4):
 			address = i // 4
 			if self.seg_credits == 0:
@@ -147,16 +150,18 @@ class Disassembler:
 				self.seg_credits -= 1
 			word = struct.unpack('>I', mc.code[i:i+4])[0] & 0xFFFF
 			opcode, operands = self.instruction(word)
-			asm = opcode.ljust(10) + operands
-			print('\t' + asm.ljust(30) + f'# {address:04x}: {word:04x}', file=output)
-			if opcode.startswith('ret'):
-				print(file=output)
+			asm = (opcode.ljust(10) + operands).ljust(30)
+			lines.append(f'\t{asm}# {address:04x}: {word:04x}')
 			# hack to make segmented addressing work
-			elif opcode == 'seg':
+			if opcode == 'seg':
 				self.segment = (word >> 1) & 1
 				self.seg_credits = 2
 			elif opcode == 'call':
 				self.seg_credits = 0
+		for i, line in enumerate(lines):
+			if i in self.xrefs:
+				print(f'label_{i:04x}:', file=output)
+			print(line, file=output)
 		for i in range(0, len(mc.data), 8):
 			word = mc.data[i:i+8]
 			hex_word = ' '.join([f'{byte:02x}' for byte in word])
@@ -166,7 +171,7 @@ class Disassembler:
 	def instruction(self, word):
 		for inst in instruction_list:
 			if word & inst.encoding_mask == inst.encoding_value:
-				operands = {op.name: op.decode(word, self.segment) for op in inst.operand_list}
+				operands = {op.name: op.decode(word, self.segment, self.xrefs) for op in inst.operand_list}
 				return inst.name, inst.operands.format(**operands)
 		raise NotImplementedError('unknown instruction')
 
