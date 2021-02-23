@@ -116,7 +116,7 @@ class ret_px:
 
 @instruction
 class mov:
-	operands = 'r{dst}, 0x{imm8:02x} # {imm8}'
+	operands = 'r{dst}, 0x{imm8:02x} ; {imm8}'
 	encoding = '0000 1ddd iiii iiii'
 
 @instruction
@@ -171,7 +171,7 @@ class Disassembler:
 			word = struct.unpack('>I', mc.code[i:i+4])[0] & 0xFFFF
 			opcode, operands = self.instruction(word)
 			asm = (opcode.ljust(10) + operands).ljust(29)
-			lines.append(f'\t{asm} # {address:04x}: {word:04x}')
+			lines.append(f'\t{asm} ; {address:04x}: {word:04x}')
 			# hack to make segmented addressing work,
 			# in reality the segment is probably just state that gets pushed onto the call stack
 			if opcode == 'seg':
@@ -187,11 +187,11 @@ class Disassembler:
 			word = mc.data[i:i+8]
 			hex_word = ' '.join([f'{byte:02x}' for byte in word])
 			readable = ''.join([chr(c) if c < 127 and c >= 32 else '.' for c in word])
-			print(f'\t.data {hex_word} # {i:04x}: {readable}', file=output)
+			print(f'\t.data {hex_word} ; {i:04x}: {readable}', file=output)
 		for i in range(0, len(mc.signature), 8):
 			word = mc.signature[i:i+8]
 			hex_word = ' '.join([f'{byte:02x}' for byte in word])
-			print(f'\t.sig  {hex_word} # {i:04x}', file=output)
+			print(f'\t.sig  {hex_word} ; {i:04x}', file=output)
 	
 	def instruction(self, word):
 		for inst in instruction_list:
@@ -220,7 +220,7 @@ class Assembler:
 		self.mc.save(args.output)
 
 	def handle_line(self, line):
-		line = line.split('#')[0].strip()
+		line = line.split(';')[0].strip()
 		if not line:
 			return
 		if line.endswith(':'):
