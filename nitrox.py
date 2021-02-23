@@ -40,7 +40,7 @@ class Operand:
 		assert value == 0
 		return enc
 
-	def decode(self, inst, segment, xrefs):
+	def decode(self, inst, assembler):
 		mask = self.mask
 		size = 0
 		value = 0
@@ -51,9 +51,10 @@ class Operand:
 			inst >>= 1
 			mask >>= 1
 		if self.name == 'addr':
-			value |= segment << 13
-			xrefs.add(value)
-		if self.name == 'imm3_minus_one':
+			value |= assembler.segment << 13
+			assembler.xrefs.add(value)
+			value = assembler.label(value)
+		elif self.name == 'imm3_minus_one':
 			value += 1
 		return value
 
@@ -85,22 +86,22 @@ class seg:
 
 @instruction
 class jz:
-	operands = 'label_{addr:04x}'
+	operands = '{addr}'
 	encoding = 'aa11 0aaa aaaa aaaa'
 
 @instruction
 class jnz:
-	operands = 'label_{addr:04x}'
+	operands = '{addr}'
 	encoding = 'aa01 0aaa aaaa aaaa'
 
 @instruction
 class jc:
-	operands = 'label_{addr:04x}'
+	operands = '{addr}'
 	encoding = 'aa01 1aaa aaaa aaaa'
 
 @instruction
 class call:
-	operands = 'label_{addr:04x}'
+	operands = '{addr}'
 	encoding = 'aa11 1aaa aaaa aaaa'
 
 @instruction
@@ -135,8 +136,13 @@ class dw:
 
 class Disassembler:
 	def __init__(self, args):
-		self.seg_credits = 0
+		self.seg_duration = 0
 		self.mc = mc = Microcode(path=args.filename)
+		self.address_to_label = {}
+		if args.labels:
+			for line in open(args.labels, 'r'):
+				address, label = line.rstrip('\n').split(' ')
+				self.address_to_label[int(address, 16)] = label
 		if args.output:
 			output = open(args.output, 'w+')
 		else:
@@ -148,23 +154,24 @@ class Disassembler:
 		self.xrefs = set()
 		for i in range(0, len(mc.code), 4):
 			address = i // 4
-			if self.seg_credits == 0:
+			if self.seg_duration == 0:
 				self.segment = address >> 13
 			else:
-				self.seg_credits -= 1
+				self.seg_duration -= 1
 			word = struct.unpack('>I', mc.code[i:i+4])[0] & 0xFFFF
 			opcode, operands = self.instruction(word)
-			asm = (opcode.ljust(10) + operands).ljust(30)
-			lines.append(f'\t{asm}# {address:04x}: {word:04x}')
-			# hack to make segmented addressing work
+			asm = (opcode.ljust(10) + operands).ljust(29)
+			lines.append(f'\t{asm} # {address:04x}: {word:04x}')
+			# hack to make segmented addressing work,
+			# in reality the segment is probably just state that gets pushed onto the call stack
 			if opcode == 'seg':
 				self.segment = (word >> 1) & 1
-				self.seg_credits = 2
+				self.seg_duration = 2
 			elif opcode == 'call':
-				self.seg_credits = 0
+				self.seg_duration = 0
 		for i, line in enumerate(lines):
 			if i in self.xrefs:
-				print(f'label_{i:04x}:', file=output)
+				print(self.label(i) + ':', file=output)
 			print(line, file=output)
 		for i in range(0, len(mc.data), 8):
 			word = mc.data[i:i+8]
@@ -179,9 +186,15 @@ class Disassembler:
 	def instruction(self, word):
 		for inst in instruction_list:
 			if word & inst.encoding_mask == inst.encoding_value:
-				operands = {op.name: op.decode(word, self.segment, self.xrefs) for op in inst.operand_list}
+				operands = {op.name: op.decode(word, self) for op in inst.operand_list}
 				return inst.name, inst.operands.format(**operands)
 		raise NotImplementedError('unknown instruction')
+
+	def label(self, address):
+		if address in self.address_to_label:
+			return self.address_to_label[address]
+		else:
+			return f'label_{address:04x}'
 
 class Assembler:
 	def __init__(self, args):
@@ -299,6 +312,7 @@ if __name__ == '__main__':
 	parser.add_argument('filename')
 	parser.add_argument('-o', '--output')
 	parser.add_argument('-d', '--disassemble', action='store_true')
+	parser.add_argument('-l', '--labels')
 	args = parser.parse_args()
 	if args.disassemble:
 		Disassembler(args)
