@@ -26,6 +26,8 @@ class Operand:
 		return self.encode_value(value)
 
 	def encode_value(self, value):
+		if self.name == 'imm3_minus_one':
+			value -= 1
 		mask = self.mask
 		enc = 0
 		pos = 0
@@ -51,6 +53,8 @@ class Operand:
 		if self.name == 'addr':
 			value |= segment << 13
 			xrefs.add(value)
+		if self.name == 'imm3_minus_one':
+			value += 1
 		return value
 
 	def __repr__(self):
@@ -121,7 +125,7 @@ class sub:
 
 @instruction
 class subi:
-	operands = 'r{dst}, r{src}, {imm3}'
+	operands = 'r{dst}, r{src}, {imm3_minus_one}'
 	encoding = '1110 0ddd 11ii isss'
 
 @instruction
