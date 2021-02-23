@@ -85,6 +85,16 @@ class seg:
 	encoding = '0000 0000 0000 00s1'
 
 @instruction
+class op0080: # TODO
+	operands = ''
+	encoding = '0000 0000 1000 0000'
+
+@instruction
+class op0180: # TODO
+	operands = ''
+	encoding = '0000 0001 1000 0000'
+
+@instruction
 class jz:
 	operands = '{addr}'
 	encoding = 'aa11 0aaa aaaa aaaa'
@@ -115,29 +125,119 @@ class ret_px:
 	encoding = '0000 0010 i000 0000'
 
 @instruction
+class op0700: # TODO
+	operands = '0x{imm8:02x}'
+	encoding = '0000 0111 iiii iiii'
+
+@instruction
 class mov:
 	operands = 'r{dst}, 0x{imm8:02x} ; {imm8}'
-	encoding = '0000 1ddd iiii iiii'
-
-@instruction
-class sub:
-	operands = 'r{dst}, r{lhs}, r{rhs}'
-	encoding = '0110 0ddd 11rr rlll'
-
-@instruction
-class subi:
-	operands = 'r{dst}, r{src}, {imm3_minus_one}'
-	encoding = '1110 0ddd 11ii isss'
+	encoding = '0.00 1ddd iiii iiii'
 
 @instruction
 class and_:
 	operands = 'r{dst}, r{lhs}, r{rhs}'
-	encoding = '0010 0ddd 00rr rlll'
+	encoding = '0.10 0ddd 00rr rlll'
 
 @instruction
 class or_:
 	operands = 'r{dst}, r{lhs}, r{rhs}'
-	encoding = '0010 0ddd 01rr rlll'
+	encoding = '0.10 0ddd 01rr rlll'
+
+@instruction
+class add:
+	operands = 'r{dst}, r{lhs}, r{rhs}'
+	encoding = '0.10 0ddd 10rr rlll'
+
+@instruction
+class sub:
+	operands = 'r{dst}, r{lhs}, r{rhs}'
+	encoding = '0.10 0ddd 11rr rlll'
+
+@instruction
+class shli:
+	operands = 'r{dst}, r{lhs}, {imm3}'
+	encoding = '0.10 1ddd 00ii illl'
+
+@instruction
+class shri:
+	operands = 'r{dst}, r{lhs}, {imm3}'
+	encoding = '0.10 1ddd 01ii illl'
+
+@instruction
+class op2880: # TODO
+	operands = 'r{dst}, r{lhs}, r{rhs}'
+	encoding = '0.10 1ddd 10rr rlll'
+
+@instruction
+class op28c0: # TODO
+	operands = 'r{dst}, r{lhs}, r{rhs}'
+	encoding = '0.10 1ddd 11rr rlll'
+
+@instruction
+class op4000: # TODO
+	operands = 'r{dst}, r{lhs}, r{rhs}'
+	encoding = '0100 0ddd 00rr rlll'
+
+@instruction
+class op4040: # TODO
+	operands = 'r{dst}, r{lhs}, r{rhs}'
+	encoding = '0100 0ddd 01rr rlll'
+
+@instruction
+class op4080: # TODO (unused)
+	operands = 'r{dst}, r{lhs}, r{rhs}'
+	encoding = '0100 0ddd 10rr rlll'
+
+@instruction
+class op40c0: # TODO (unused)
+	operands = 'r{dst}, r{lhs}, r{rhs}'
+	encoding = '0100 0ddd 11rr rlll'
+
+@instruction
+class op4800: # TODO
+	operands = 'r{dst}, r{lhs}, r{rhs}'
+	encoding = '0100 1ddd 00rr rlll'
+
+@instruction
+class op4840: # TODO
+	operands = 'r{dst}, r{lhs}, r{rhs}'
+	encoding = '0100 1ddd 01rr rlll'
+
+@instruction
+class op8000: # TODO
+	operands = 'r{dst}, r{lhs}, r{rhs}'
+	encoding = '1000 0ddd 00rr rlll'
+
+@instruction
+class op8800: # TODO
+	operands = 'r{dst}, r{lhs}, r{rhs}'
+	encoding = '1000 1ddd 00rr rlll'
+
+@instruction
+class opa000:
+	operands = 'r{dst}, r{lhs}, r{rhs}'
+	encoding = '1.10 0ddd 00rr rlll'
+
+@instruction
+class opa040:
+	operands = 'r{dst}, r{lhs}, r{rhs}'
+	encoding = '1.10 0ddd 01rr rlll'
+
+@instruction
+class addi:
+	operands = 'r{dst}, r{src}, {imm3_minus_one}'
+	encoding = '1.10 0ddd 10ii isss'
+
+@instruction
+class subi:
+	operands = 'r{dst}, r{src}, {imm3_minus_one}'
+	encoding = '1.10 0ddd 11ii isss'
+
+@instruction
+class opa800: # TODO
+	operands = 'r{dst}, r{lhs}, r{rhs}'
+	encoding = '1.10 1ddd 00rr rlll'
 
 @instruction
 class dw:
@@ -171,7 +271,7 @@ class Disassembler:
 			word = struct.unpack('>I', mc.code[i:i+4])[0] & 0xFFFF
 			opcode, operands = self.instruction(word)
 			asm = (opcode.ljust(10) + operands).ljust(29)
-			lines.append(f'\t{asm} ; {address:04x}: {word:04x}')
+			lines.append(f'\t{asm} ; {address:04x}: {word>>12&15:04b} {word>>8&15:04b} {word>>4&15:04b} {word&15:04b}')
 			# hack to make segmented addressing work,
 			# in reality the segment is probably just state that gets pushed onto the call stack
 			if opcode == 'seg':
@@ -196,8 +296,11 @@ class Disassembler:
 	def instruction(self, word):
 		for inst in instruction_list:
 			if word & inst.encoding_mask == inst.encoding_value:
+				opcode = inst.name
+				if inst.encoding[1] == '.' and word & 0x4000:
+					opcode += '.'
 				operands = {op.name: op.decode(word, self) for op in inst.operand_list}
-				return inst.name, inst.operands.format(**operands)
+				return opcode, inst.operands.format(**operands)
 		raise NotImplementedError('unknown instruction')
 
 	def label(self, address):
@@ -235,8 +338,12 @@ class Assembler:
 			arguments = [arg.strip() for arg in components[1].split(',')]
 		if opcode.startswith('.'):
 			return getattr(self, 'handle_' + opcode[1:])(*arguments)
+		word = 0
+		if opcode.endswith('.'):
+			opcode = opcode.removesuffix('.')
+			word = 0x4000
 		inst = instruction_dict[opcode]
-		word = inst.encoding_value
+		word |= inst.encoding_value
 		for i, param in enumerate(inst.operand_list):
 			arg = arguments[i]
 			if param.name == 'addr' and not arg.startswith('0x'):
