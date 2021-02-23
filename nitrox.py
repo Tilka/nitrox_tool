@@ -167,6 +167,10 @@ class Disassembler:
 			hex_word = ' '.join([f'{byte:02x}' for byte in word])
 			readable = ''.join([chr(c) if c < 127 and c >= 32 else '.' for c in word])
 			print(f'\t.data {hex_word} # {i:04x}: {readable}', file=output)
+		for i in range(0, len(mc.signature), 8):
+			word = mc.signature[i:i+8]
+			hex_word = ' '.join([f'{byte:02x}' for byte in word])
+			print(f'\t.sig  {hex_word} # {i:04x}', file=output)
 	
 	def instruction(self, word):
 		for inst in instruction_list:
@@ -226,6 +230,9 @@ class Assembler:
 
 	def handle_data(self, hex_bytes):
 		self.mc.data += binascii.unhexlify(hex_bytes.replace(' ', ''))
+
+	def handle_sig(self, hex_bytes):
+		self.mc.signature += binascii.unhexlify(hex_bytes.replace(' ', ''))
 
 class Microcode:
 	def __init__(self, path=None):
