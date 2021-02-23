@@ -67,7 +67,7 @@ def instruction(cls):
 	value = ''.join([c if c in '01' else '0' for c in enc])
 	cls.encoding_mask = int(mask, 2)
 	cls.encoding_value = int(value, 2)
-	cls.name = cls.__name__
+	cls.name = cls.__name__.removesuffix('_')
 	cls.operand_list = [Operand(op, enc) for op in cls.operands.split(',') if op != '']
 	instruction_list.append(cls)
 	assert cls.name not in instruction_dict
@@ -128,6 +128,16 @@ class sub:
 class subi:
 	operands = 'r{dst}, r{src}, {imm3_minus_one}'
 	encoding = '1110 0ddd 11ii isss'
+
+@instruction
+class and_:
+	operands = 'r{dst}, r{lhs}, r{rhs}'
+	encoding = '0010 0ddd 00rr rlll'
+
+@instruction
+class or_:
+	operands = 'r{dst}, r{lhs}, r{rhs}'
+	encoding = '0010 0ddd 01rr rlll'
 
 @instruction
 class dw:
