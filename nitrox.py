@@ -85,6 +85,16 @@ class seg:
 	encoding = '0000 0000 0000 00s1'
 
 @instruction
+class op0020: # TODO (lite)
+	operands = 'r{reg}'
+	encoding = '0000 0000 0010 0rrr'
+
+@instruction
+class op0040: # TODO (lite)
+	operands = 'r{reg}'
+	encoding = '0000 0000 0100 0rrr'
+
+@instruction
 class op0080: # TODO
 	operands = ''
 	encoding = '0000 0000 1000 0000'
@@ -123,6 +133,26 @@ class ret_1000:
 class ret_px:
 	operands = '{imm1}'
 	encoding = '0000 0010 i000 0000'
+
+@instruction
+class op0300: # TODO
+	operands = 'r{src}'
+	encoding = '0000 0011 0000 0sss'
+
+@instruction
+class op0400: # TODO (lite)
+	operands = '0x{imm8:02x}'
+	encoding = '0000 0100 iiii iiii'
+
+@instruction
+class op0500: # TODO
+	operands = 'r{reg}'
+	encoding = '0000 0101 0000 0rrr'
+
+@instruction
+class op0600: # TODO
+	operands = 'r{reg}'
+	encoding = '0000 0110 0000 0rrr'
 
 @instruction
 class op0700: # TODO
@@ -166,8 +196,9 @@ class shri:
 
 @instruction
 class op2880: # TODO
-	operands = 'r{dst}, r{lhs}, r{rhs}'
-	encoding = '0.10 1ddd 10rr rlll'
+	# imm3=7: align lhs to 8, i.e. (lhs + 7) & -7
+	operands = 'r{dst}, r{lhs}, {imm3}'
+	encoding = '0.10 1ddd 10ii illl'
 
 @instruction
 class op28c0: # TODO
@@ -185,21 +216,6 @@ class op4040: # TODO
 	encoding = '0100 0ddd 01rr rlll'
 
 @instruction
-class op4080: # TODO (unused)
-	operands = 'r{dst}, r{lhs}, r{rhs}'
-	encoding = '0100 0ddd 10rr rlll'
-
-@instruction
-class op40c0: # TODO (unused)
-	operands = 'r{dst}, r{lhs}, r{rhs}'
-	encoding = '0100 0ddd 11rr rlll'
-
-@instruction
-class op4800: # TODO
-	operands = 'r{dst}, r{lhs}, r{rhs}'
-	encoding = '0100 1ddd 00rr rlll'
-
-@instruction
 class op4840: # TODO
 	operands = 'r{dst}, r{lhs}, r{rhs}'
 	encoding = '0100 1ddd 01rr rlll'
@@ -207,32 +223,62 @@ class op4840: # TODO
 @instruction
 class op8000: # TODO
 	operands = 'r{dst}, r{lhs}, r{rhs}'
-	encoding = '1000 0ddd 00rr rlll'
+	encoding = '1.00 0ddd 00rr rlll'
+
+@instruction
+class op8040: # TODO
+	operands = 'r{dst}, r{lhs}, r{rhs}'
+	encoding = '1.00 0ddd 01rr rlll'
+
+@instruction
+class op8080: # TODO
+	operands = 'r{dst}, r{lhs}, r{rhs}'
+	encoding = '1.00 0ddd 10rr rlll'
+
+@instruction
+class op80c0: # TODO
+	operands = 'r{dst}, r{lhs}, r{rhs}'
+	encoding = '1.00 0ddd 11rr rlll'
 
 @instruction
 class op8800: # TODO
 	operands = 'r{dst}, r{lhs}, r{rhs}'
-	encoding = '1000 1ddd 00rr rlll'
+	encoding = '1.00 1ddd 00rr rlll'
 
 @instruction
-class opa000:
+class op8840: # TODO
 	operands = 'r{dst}, r{lhs}, r{rhs}'
-	encoding = '1.10 0ddd 00rr rlll'
+	encoding = '1.00 1ddd 01rr rlll'
 
 @instruction
-class opa040:
+class op8880: # TODO
 	operands = 'r{dst}, r{lhs}, r{rhs}'
-	encoding = '1.10 0ddd 01rr rlll'
+	encoding = '1.00 1ddd 10rr rlll'
+
+@instruction
+class op88c0: # TODO
+	operands = 'r{dst}, r{lhs}, r{rhs}'
+	encoding = '1.00 1ddd 11rr rlll'
+
+@instruction
+class andi:
+	operands = 'r{dst}, r{lhs}, {imm3_minus_one}'
+	encoding = '1.10 0ddd 00ii illl'
+
+@instruction
+class opa040: # TODO (it's not ori)
+	operands = 'r{dst}, r{lhs}, {imm3_minus_one}'
+	encoding = '1.10 0ddd 01ii illl'
 
 @instruction
 class addi:
-	operands = 'r{dst}, r{src}, {imm3_minus_one}'
-	encoding = '1.10 0ddd 10ii isss'
+	operands = 'r{dst}, r{lhs}, {imm3_minus_one}'
+	encoding = '1.10 0ddd 10ii illl'
 
 @instruction
 class subi:
-	operands = 'r{dst}, r{src}, {imm3_minus_one}'
-	encoding = '1.10 0ddd 11ii isss'
+	operands = 'r{dst}, r{lhs}, {imm3_minus_one}'
+	encoding = '1.10 0ddd 11ii illl'
 
 @instruction
 class opa800: # TODO
@@ -240,9 +286,25 @@ class opa800: # TODO
 	encoding = '1.10 1ddd 00rr rlll'
 
 @instruction
-class dw:
-	operands = '0x{imm16:04x}'
-	encoding = 'iiii iiii iiii iiii'
+class opa840: # TODO
+	operands = 'r{dst}, r{lhs}, r{rhs}'
+	encoding = '1.10 1ddd 01rr rlll'
+
+@instruction
+class opa880: # TODO
+	# imm3=7: align lhs to 16, i.e. (lhs + 15) & -15
+	operands = 'r{dst}, r{lhs}, r{rhs}'
+	encoding = '1.10 1ddd 10rr rlll'
+
+@instruction
+class opa8c0: # TODO
+	operands = 'r{dst}, r{lhs}, r{rhs}'
+	encoding = '1.10 1ddd 11rr rlll'
+
+#@instruction
+#class dw:
+#	operands = '0x{imm16:04x}'
+#	encoding = 'iiii iiii iiii iiii'
 
 class Disassembler:
 	def __init__(self, args):
@@ -271,7 +333,7 @@ class Disassembler:
 			word = struct.unpack('>I', mc.code[i:i+4])[0] & 0xFFFF
 			opcode, operands = self.instruction(word)
 			asm = (opcode.ljust(10) + operands).ljust(29)
-			lines.append(f'\t{asm} ; {address:04x}: {word>>12&15:04b} {word>>8&15:04b} {word>>4&15:04b} {word&15:04b}')
+			lines.append(f'\t{asm} ; {address:04x}: 0x{word:04x} ({word>>12&15:04b} {word>>8&15:04b} {word>>4&15:04b} {word&15:04b})')
 			# hack to make segmented addressing work,
 			# in reality the segment is probably just state that gets pushed onto the call stack
 			if opcode == 'seg':
@@ -343,6 +405,7 @@ class Assembler:
 			opcode = opcode.removesuffix('.')
 			word = 0x4000
 		inst = instruction_dict[opcode]
+		assert word == 0 or inst.encoding[1] == '.'
 		word |= inst.encoding_value
 		for i, param in enumerate(inst.operand_list):
 			arg = arguments[i]
