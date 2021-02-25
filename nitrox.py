@@ -333,7 +333,8 @@ class Disassembler:
 			word = struct.unpack('>I', mc.code[i:i+4])[0] & 0xFFFF
 			opcode, operands = self.instruction(word)
 			asm = (opcode.ljust(10) + operands).ljust(29)
-			lines.append(f'\t{asm} ; {address:04x}: 0x{word:04x} ({word>>12&15:04b} {word>>8&15:04b} {word>>4&15:04b} {word&15:04b})')
+			#lines.append(f'\t{asm} ; {address:04x}: 0x{word:04x} ({word>>12&15:04b} {word>>8&15:04b} {word>>4&15:04b} {word&15:04b})')
+			lines.append(f'\t{asm} ; 0x{word:04x} ({word>>12&15:04b} {word>>8&15:04b} {word>>4&15:04b} {word&15:04b})')
 			# hack to make segmented addressing work,
 			# in reality the segment is probably just state that gets pushed onto the call stack
 			if opcode == 'seg':
@@ -479,6 +480,7 @@ class Microcode:
 		return blob + (b'' if len_mod_16 == 0 else b'\x00' * (16 - len_mod_16))
 
 	def save(self, path):
+		assert len(self.code) < 13354
 		with open(path, 'wb+') as f:
 			f.write(struct.pack('>B31sIIQ', self.mc_type, self.version.encode('ascii'), len(self.code), len(self.data), self.sram_addr))
 			code = b''.join([struct.pack('>I', i << 17 | self.compute_parity(word) << 16 | word) for i, word in enumerate(self.code)])
