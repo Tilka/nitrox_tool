@@ -116,21 +116,34 @@ class op0180: # TODO
 class jz:
 	operands = '{addr}'
 	encoding = 'aa11 0aaa aaaa aaaa'
+	def emulate(state, addr):
+		if state.zero_flag:
+			state.pc = (state.segment << 13) | addr
 
 @instruction
 class jnz:
 	operands = '{addr}'
 	encoding = 'aa01 0aaa aaaa aaaa'
+	def emulate(state, addr):
+		if not state.zero_flag:
+			state.pc = (state.segment << 13) | addr
 
 @instruction
 class jc:
 	operands = '{addr}'
 	encoding = 'aa01 1aaa aaaa aaaa'
+	def emulate(state, addr):
+		if state.carry_flag:
+			state.pc = (state.segment << 13) | addr
 
 @instruction
 class call:
 	operands = '{addr}'
 	encoding = 'aa11 1aaa aaaa aaaa'
+	def emulate(state, addr):
+		assert len(state.call_stack) < 32
+		state.call_stack.append(state.pc)
+		state.pc = (state.segment << 13) | addr
 
 @instruction
 class ret_1000:
@@ -141,6 +154,9 @@ class ret_1000:
 class ret_px:
 	operands = '{imm1}'
 	encoding = '0000 0010 i000 0000'
+	def emulate(state, imm1): # TODO: what does imm1 do?
+		state.pc = state.call_stack.pop()
+		state.segment = state.pc >> 13
 
 @instruction
 class op0300: # TODO
@@ -178,32 +194,43 @@ class li: # load immediate
 class and_:
 	operands = 'r{dst}, r{lhs}, r{rhs}'
 	encoding = '0.10 0ddd 00rr rlll'
+	def emulate(state, dst, lhs, rhs):
+		state.main_reg[dst] = state.main_reg[lhs] & state.main_regs[rhs]
 
 @instruction
 class or_:
 	operands = 'r{dst}, r{lhs}, r{rhs}'
 	encoding = '0.10 0ddd 01rr rlll'
+	def emulate(state, dst, lhs, rhs):
+		state.main_reg[dst] = state.main_reg[lhs] | state.main_regs[rhs]
 
 @instruction
 class add:
 	operands = 'r{dst}, r{lhs}, r{rhs}'
 	encoding = '0.10 0ddd 10rr rlll'
+	def emulate(state, dst, lhs, rhs):
+		state.main_reg[dst] = state.main_reg[lhs] + state.main_regs[rhs]
 
 @instruction
 class sub:
 	operands = 'r{dst}, r{lhs}, r{rhs}'
 	encoding = '0.10 0ddd 11rr rlll'
+	def emulate(state, dst, lhs, rhs):
+		state.main_reg[dst] = state.main_reg[lhs] - state.main_regs[rhs]
 
 @instruction
 class shli:
-	operands = 'r{dst}, r{lhs}, {imm3}'
-	encoding = '0.10 1ddd 00ii illl'
+	operands = 'r{dst}, r{lhs}, {imm4}'
+	encoding = 'i.10 1ddd 00ii illl'
+	def emulate(state, dst, lhs, imm4):
+		state.main_reg[dst] = (state.main_reg[lhs] << imm4) & 0xFFFF
 
 @instruction
 class shri:
-	operands = 'r{dst}, r{lhs}, {imm3}'
-	encoding = '0.10 1ddd 01ii illl'
-
+	operands = 'r{dst}, r{lhs}, {imm4}'
+	encoding = 'i.10 1ddd 01ii illl'
+	def emulate(state, dst, lhs, imm4):
+		state.main_reg[dst] = state.main_reg[lhs] >> imm4
 
 @instruction
 class la: # load address register (16 bits)
@@ -238,11 +265,11 @@ class align8:
 @instruction
 class op2880: # TODO
 	# 0 - bits 0..15
-	# 1 - bits 16..31
+	# 1 - bits 16..31 (?)
 	# 2 - bits 8..15
-	# 3 - bits 24..31
+	# 3 - bits 24..31 (?)
 	# 4 - bits 0..7
-	# 5 - bits 16..23
+	# 5 - bits 16..23 (?)
 	# 6 - ???
 	# 7 - align to 8
 	operands = 'r{dst}, r{lhs}, {imm3}'
@@ -254,7 +281,7 @@ class op2880: # TODO
 #	encoding = '0.10 1ddd 11rr rsss'
 
 @instruction
-class op28c0: # TODO
+class op28c0: # TODO (load from address register, similar imm3 values as op2880)
 	operands = 'r{dst}, r{lhs}, {imm3}'
 	encoding = '0.10 1ddd 11ii illl'
 
@@ -295,45 +322,36 @@ class op80c0: # TODO
 
 @instruction
 class lis: # load immediate shifted (flags are set according to the whole 16-bit register)
-	operands = 'r{dst}, {imm8}'
+	operands = 'r{dst}, 0x{imm8:02x} ; {imm8}'
 	encoding = '1.00 1iii iiii iddd'
 	def emulate(state, dst, imm8):
-		state.main_reg[dst] &= 0xFF
-		state.main_reg[dst] |= imm8 << 8
+		state.main_reg[dst] = (imm8 << 8) | (state.main_regs[dst] & 0xFF)
 
 @instruction
 class andi:
 	operands = 'r{dst}, r{lhs}, {imm3_minus_one}'
 	encoding = '1.10 0ddd 00ii illl'
+	def emulate(state, dst, lhs, imm3_minus_one):
+		state.main_reg[dst] = state.main_reg[lhs] & imm3_minus_one
 
 @instruction
 class opa040: # TODO (it's not ori, changes hash output)
-	operands = 'r{dst}, r{lhs}, {imm3_minus_one}'
+	operands = 'r{dst}, r{lhs}, {imm3}'
 	encoding = '1.10 0ddd 01ii illl'
 
 @instruction
 class addi:
 	operands = 'r{dst}, r{lhs}, {imm3_minus_one}'
 	encoding = '1.10 0ddd 10ii illl'
+	def emulate(state, dst, lhs, imm3_minus_one):
+		state.main_regs[dst] = state.main_regs[lhs] + imm3_minus_one
 
 @instruction
 class subi:
 	operands = 'r{dst}, r{lhs}, {imm3_minus_one}'
 	encoding = '1.10 0ddd 11ii illl'
-
-@instruction
-class shli8:
-	operands = 'r{dst}, r{lhs}, {imm3}'
-	encoding = '1.10 1ddd 00ii illl'
-	def emulate(state, dst, lhs, imm3):
-		state.main_reg[dst] = (state.main_reg[lhs] << (imm3 + 8)) & 0xFF00
-
-@instruction
-class shri8:
-	operands = 'r{dst}, r{lhs}, {imm3}'
-	encoding = '1.10 1ddd 01ii illl'
-	def emulate(state, dst, lhs, imm3):
-		state.main_reg[dst] = state.main_reg[lhs] >> (imm3 + 8)
+	def emulate(state, dst, lhs, imm3_minus_one):
+		state.main_regs[dst] = state.main_regs[lhs] - imm3_minus_one
 
 @instruction
 class opa880: # TODO
