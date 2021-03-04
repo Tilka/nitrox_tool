@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
 
+# TODO: why does the 'and' in CNPx-MC-SSL-MAIN-0018 at 0x00a4 have a '.'?
+# TODO; why does the 'or' at 0x00f6 have a '.'?
+
 import binascii
 import re
 import struct
@@ -54,10 +57,15 @@ class Operand:
 				size += 1
 			inst >>= 1
 			mask >>= 1
-		if self.name == 'addr':
+		if self.name.startswith('addr'):
 			value |= assembler.segment << 13
-			assembler.xrefs.add(value)
-			value = assembler.label(value)
+			# HACK
+			if self.name == 'addr_':
+				assembler.call_xrefs.add(value)
+				value = assembler.label('fun', value)
+			else:
+				assembler.jump_xrefs.add(value)
+				value = assembler.label('loc', value)
 		elif self.name == 'imm3_minus_one':
 			value += 1
 		return value
@@ -103,12 +111,12 @@ class op0040: # TODO (lite)
 	encoding = '0000 0000 0100 0rrr'
 
 @instruction
-class op0080: # TODO
+class wait_input:
 	operands = ''
 	encoding = '0000 0000 1000 0000'
 
 @instruction
-class op0180: # TODO
+class wait_other:
 	operands = ''
 	encoding = '0000 0001 1000 0000'
 
@@ -117,7 +125,7 @@ class jz:
 	operands = '{addr}'
 	encoding = 'aa11 0aaa aaaa aaaa'
 	def emulate(state, addr):
-		if state.zero_flag:
+		if state.result == 0:
 			state.pc = (state.segment << 13) | addr
 
 @instruction
@@ -125,20 +133,20 @@ class jnz:
 	operands = '{addr}'
 	encoding = 'aa01 0aaa aaaa aaaa'
 	def emulate(state, addr):
-		if not state.zero_flag:
+		if state.result != 0:
 			state.pc = (state.segment << 13) | addr
 
 @instruction
-class jc:
+class js:
 	operands = '{addr}'
 	encoding = 'aa01 1aaa aaaa aaaa'
 	def emulate(state, addr):
-		if state.carry_flag:
+		if state.result & 0x8000:
 			state.pc = (state.segment << 13) | addr
 
 @instruction
 class call:
-	operands = '{addr}'
+	operands = '{addr_}'
 	encoding = 'aa11 1aaa aaaa aaaa'
 	def emulate(state, addr):
 		assert len(state.call_stack) < 32
@@ -191,7 +199,7 @@ class li: # load immediate
 		state.main_reg[dst] = imm8
 
 @instruction
-class and_:
+class and_: # TODO: why does the 'and' in CNPx-MC-SSL-MAIN-0018 at 0x00a4 have a '.'?
 	operands = 'r{dst}, r{lhs}, r{rhs}'
 	encoding = '0.10 0ddd 00rr rlll'
 	def emulate(state, dst, lhs, rhs):
@@ -235,25 +243,48 @@ class shri:
 @instruction
 class la: # load address register (16 bits)
 	operands = 'a{dst}, r{src}'
-	encoding = '0.10 1ddd 1000 0sss'
+	encoding = '0010 1ddd 1000 0sss'
 	def emulate(state, dst, src):
 		state.addr_reg[dst] = state.main_reg[src]
 
 @instruction
+class la1: # TODO: different register or upper 32 bits?
+	operands = 'a{dst}, r{src}'
+	encoding = '0010 1ddd 1000 1sss'
+
+@instruction
 class la_hi: # load address register (high 8 bits)
 	operands = 'a{dst}, r{src}'
-	encoding = '0.10 1ddd 1001 0sss'
+	encoding = '0010 1ddd 1001 0sss'
 	def emulate(state, dst, src):
 		state.addr_reg[dst] &= 0xFF
 		state.addr_reg[dst] |= (state.main_reg[src] & 0xFF) << 8
 
 @instruction
+class la_hi1: # TODO
+	operands = 'a{dst}, r{src}'
+	encoding = '0010 1ddd 1001 1sss'
+
+@instruction
 class la_lo: # load address register (low 8 bits)
 	operands = 'a{dst}, r{src}'
-	encoding = '0.10 1ddd 1010 0sss'
+	encoding = '0010 1ddd 1010 0sss'
 	def emulate(state, dst, src):
 		state.addr_reg[dst] &= 0xFF00
 		state.addr_reg[dst] |= state.main_reg[src] & 0xFF
+
+@instruction
+class la_lo1: # TODO
+	operands = 'a{dst}, r{src}'
+	encoding = '0010 1ddd 1010 1sss'
+
+@instruction
+class input: # read high-level operation, TODO: what does it do for offsets higher than 32?
+	operands = 'r{dst}, r{src}'
+	encoding = '0010 1ddd 1011 0sss'
+	def emulate(state, dst, src):
+		# main_reg[src] is an offset
+		raise NotImplementedError
 
 @instruction
 class align8:
@@ -263,26 +294,38 @@ class align8:
 		state.main_reg[dst] = (state.main_reg[src] + 7) & -7
 
 @instruction
-class op2880: # TODO
-	# 0 - bits 0..15
-	# 1 - bits 16..31 (?)
-	# 2 - bits 8..15
-	# 3 - bits 24..31 (?)
-	# 4 - bits 0..7
-	# 5 - bits 16..23 (?)
-	# 6 - ???
-	# 7 - align to 8
-	operands = 'r{dst}, r{lhs}, {imm3}'
-	encoding = '0.10 1ddd 10ii illl'
-
-#@instruction
-#class sa: # store address register to GPR (16 bits)
-#	operands = 'r{dst}, r{lhs}, r{rhs}'
-#	encoding = '0.10 1ddd 11rr rsss'
+class sa: # store address register to GPR (16 bits)
+	operands = 'r{dst}, a{src}'
+	encoding = '0.10 1ddd 1100 0sss'
 
 @instruction
-class op28c0: # TODO (load from address register, similar imm3 values as op2880)
-	operands = 'r{dst}, r{lhs}, {imm3}'
+class sa1: # TODO
+	operands = 'r{dst}, a{src}'
+	encoding = '0.10 1ddd 1100 1sss'
+
+@instruction
+class sa_hi:
+	operands = 'r{dst}, a{src}'
+	encoding = '0.10 1ddd 1101 0sss'
+
+@instruction
+class sa_hi1: # TODO
+	operands = 'r{dst}, a{src}'
+	encoding = '0.10 1ddd 1101 1sss'
+
+@instruction
+class sa_lo:
+	operands = 'r{dst}, a{src}'
+	encoding = '0.10 1ddd 1110 0sss'
+
+@instruction
+class sa_lo1: # TODO
+	operands = 'r{dst}, a{src}'
+	encoding = '0.10 1ddd 1110 1sss'
+
+@instruction
+class op28c0: # TODO: imm=6 imm=7
+	operands = 'r{dst}, a{lhs}, {imm3}'
 	encoding = '0.10 1ddd 11ii illl'
 
 @instruction
@@ -303,22 +346,22 @@ class op4840: # TODO
 @instruction
 class op8000: # TODO
 	operands = 'r{dst}, r{lhs}, r{rhs}'
-	encoding = '1.00 0ddd 00rr rlll'
+	encoding = '1000 0ddd 00rr rlll'
 
 @instruction
 class op8040: # TODO
 	operands = 'r{dst}, r{lhs}, r{rhs}'
-	encoding = '1.00 0ddd 01rr rlll'
+	encoding = '1000 0ddd 01rr rlll'
 
 @instruction
 class op8080: # TODO
 	operands = 'r{dst}, r{lhs}, r{rhs}'
-	encoding = '1.00 0ddd 10rr rlll'
+	encoding = '1000 0ddd 10rr rlll'
 
 @instruction
 class op80c0: # TODO
 	operands = 'r{dst}, r{lhs}, r{rhs}'
-	encoding = '1.00 0ddd 11rr rlll'
+	encoding = '1000 0ddd 11rr rlll'
 
 @instruction
 class lis: # load immediate shifted (flags are set according to the whole 16-bit register)
@@ -337,7 +380,7 @@ class andi:
 @instruction
 class opa040: # TODO (it's not ori, changes hash output)
 	operands = 'r{dst}, r{lhs}, {imm3}'
-	encoding = '1.10 0ddd 01ii illl'
+	encoding = '1010 0ddd 01ii illl'
 
 @instruction
 class addi:
@@ -357,27 +400,27 @@ class subi:
 class opa880: # TODO
 	# imm3=7: align lhs to 16, i.e. (lhs + 15) & -15
 	operands = 'r{dst}, r{lhs}, r{rhs}'
-	encoding = '1.10 1ddd 10rr rlll'
+	encoding = '1010 1ddd 10rr rlll'
 
 @instruction
-class opa8c0: # TODO
+class opa8c0: # TODO (the '.' is probably correct)
 	operands = 'r{dst}, r{lhs}, r{rhs}'
 	encoding = '1.10 1ddd 11rr rlll'
 
-#@instruction
-#class dw:
-#	operands = '0x{imm16:04x}'
-#	encoding = 'iiii iiii iiii iiii'
+@instruction
+class dw:
+	operands = '0x{imm16:04x}'
+	encoding = 'iiii iiii iiii iiii'
 
 class Disassembler:
-	def __init__(self, args):
-		self.mc = mc = Microcode(path=args.filename)
+	def __init__(self, filename, args):
+		self.mc = mc = Microcode(path=filename)
 		if args.output:
 			output = open(args.output, 'w+')
 		else:
 			output = sys.stdout
 		print(f'.type {mc.mc_type}', file=output)
-		print(f'.version {mc.version}', file=output)
+		print(f'.version {mc.version} ; {filename}', file=output)
 		print(f'.sram_addr 0x{mc.sram_addr:04x}', file=output)
 		if not args.disassemble:
 			return
@@ -388,7 +431,8 @@ class Disassembler:
 				address, label = line.rstrip('\n').split(' ')
 				self.address_to_label[int(address, 16)] = label
 		lines = []
-		self.xrefs = set()
+		self.call_xrefs = set()
+		self.jump_xrefs = set()
 		for i in range(0, len(mc.code), 4):
 			address = i // 4
 			if self.seg_duration == 0:
@@ -408,8 +452,10 @@ class Disassembler:
 			elif opcode == 'call':
 				self.seg_duration = 0
 		for i, line in enumerate(lines):
-			if i in self.xrefs:
-				print(self.label(i) + ':', file=output)
+			if i in self.call_xrefs:
+				print(self.label('fun', i) + ':', file=output)
+			if i in self.jump_xrefs:
+				print(self.label('loc', i) + ':', file=output)
 			print(line, file=output)
 		for i in range(0, len(mc.data), 8):
 			word = mc.data[i:i+8]
@@ -425,25 +471,27 @@ class Disassembler:
 		for inst in instruction_list:
 			if word & inst.encoding_mask == inst.encoding_value:
 				opcode = inst.name
+				if inst.encoding[0] == '^' and word & 0x8000:
+					opcode += '^'
 				if inst.encoding[1] == '.' and word & 0x4000:
 					opcode += '.'
 				operands = {op.name: op.decode(word, self) for op in inst.operand_list}
 				return opcode, inst.operands.format(**operands)
 		raise NotImplementedError('unknown instruction')
 
-	def label(self, address):
+	def label(self, prefix, address):
 		if address in self.address_to_label:
 			return self.address_to_label[address]
 		else:
-			return f'label_{address:04x}'
+			return f'{prefix}_{address:04x}'
 
 class Assembler:
-	def __init__(self, args):
+	def __init__(self, filename, args):
 		self.current_address = 0
 		self.label_to_addr = {}
 		self.mc = Microcode()
 		self.fixups = []
-		with open(args.filename) as f:
+		with open(filename) as f:
 			for line in f:
 				self.handle_line(line)
 		for pos, label, operand in self.fixups:
@@ -456,7 +504,7 @@ class Assembler:
 			return
 		if line.endswith(':'):
 			label = line[:-1]
-			assert label not in self.label_to_addr
+			#assert label not in self.label_to_addr
 			self.label_to_addr[label] = self.current_address
 			return
 		components = line.split(None, 1)
@@ -475,7 +523,7 @@ class Assembler:
 		word |= inst.encoding_value
 		for i, param in enumerate(inst.operand_list):
 			arg = arguments[i]
-			if param.name == 'addr' and not arg.startswith('0x'):
+			if param.name.startswith('addr') and not arg.startswith('0x'):
 				self.fixups.append((self.current_address, arg, param))
 			else:
 				word |= param.encode_string(arg)
@@ -510,7 +558,7 @@ class Microcode:
 			self.signature = b''
 
 	def load(self, path):
-		with open(args.filename, 'rb') as f:
+		with open(path, 'rb') as f:
 			d = f.read()
 		self.mc_type, self.version, code_len, data_len, self.sram_addr = struct.unpack_from('>B31sIIQ', d)
 		self.version = self.version.rstrip(b'\x00').decode('ascii')
@@ -556,14 +604,15 @@ class Microcode:
 if __name__ == '__main__':
 	import argparse
 	parser = argparse.ArgumentParser()
-	parser.add_argument('filename')
+	parser.add_argument('filename', nargs='+')
 	parser.add_argument('-o', '--output')
 	parser.add_argument('-l', '--labels')
 	parser.add_argument('-a', '--assemble', action='store_true')
 	parser.add_argument('-d', '--disassemble', action='store_true')
 	parser.add_argument('--diff', action='store_true')
 	args = parser.parse_args()
-	if args.assemble:
-		Assembler(args)
-	else:
-		Disassembler(args)
+	for filename in args.filename:
+		if args.assemble:
+			Assembler(filename, args)
+		else:
+			Disassembler(filename, args)
