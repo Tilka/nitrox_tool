@@ -168,8 +168,8 @@ class ret_px:
 
 @instruction
 class op0300: # TODO
-	operands = 'r{src}'
-	encoding = '0000 0011 0000 0sss'
+	operands = '0x{imm8:02x}'
+	encoding = '^000 0011 iiii iiii'
 
 @instruction
 class op0400: # TODO (lite)
@@ -189,7 +189,7 @@ class op0600: # TODO
 @instruction
 class op0700: # TODO
 	operands = '0x{imm8:02x}'
-	encoding = '0000 0111 iiii iiii'
+	encoding = '^000 0111 iiii iiii'
 
 @instruction
 class li: # load immediate
@@ -243,19 +243,19 @@ class shri:
 @instruction
 class la: # load address register (16 bits)
 	operands = 'a{dst}, r{src}'
-	encoding = '0010 1ddd 1000 0sss'
+	encoding = '^010 1ddd 1000 0sss'
 	def emulate(state, dst, src):
 		state.addr_reg[dst] = state.main_reg[src]
 
 @instruction
 class la1: # TODO: different register or upper 32 bits?
 	operands = 'a{dst}, r{src}'
-	encoding = '0010 1ddd 1000 1sss'
+	encoding = '^010 1ddd 1000 1sss'
 
 @instruction
 class la_hi: # load address register (high 8 bits)
 	operands = 'a{dst}, r{src}'
-	encoding = '0010 1ddd 1001 0sss'
+	encoding = '^010 1ddd 1001 0sss'
 	def emulate(state, dst, src):
 		state.addr_reg[dst] &= 0xFF
 		state.addr_reg[dst] |= (state.main_reg[src] & 0xFF) << 8
@@ -263,12 +263,12 @@ class la_hi: # load address register (high 8 bits)
 @instruction
 class la_hi1: # TODO
 	operands = 'a{dst}, r{src}'
-	encoding = '0010 1ddd 1001 1sss'
+	encoding = '^010 1ddd 1001 1sss'
 
 @instruction
 class la_lo: # load address register (low 8 bits)
 	operands = 'a{dst}, r{src}'
-	encoding = '0010 1ddd 1010 0sss'
+	encoding = '^010 1ddd 1010 0sss'
 	def emulate(state, dst, src):
 		state.addr_reg[dst] &= 0xFF00
 		state.addr_reg[dst] |= state.main_reg[src] & 0xFF
@@ -276,12 +276,12 @@ class la_lo: # load address register (low 8 bits)
 @instruction
 class la_lo1: # TODO
 	operands = 'a{dst}, r{src}'
-	encoding = '0010 1ddd 1010 1sss'
+	encoding = '^010 1ddd 1010 1sss'
 
 @instruction
 class input: # read high-level operation, TODO: what does it do for offsets higher than 32?
 	operands = 'r{dst}, r{src}'
-	encoding = '0010 1ddd 1011 0sss'
+	encoding = '^010 1ddd 1011 0sss'
 	def emulate(state, dst, src):
 		# main_reg[src] is an offset
 		raise NotImplementedError
@@ -294,39 +294,53 @@ class align8:
 		state.main_reg[dst] = (state.main_reg[src] + 7) & -7
 
 @instruction
+class align16:
+	operands = 'r{dst}, r{src}'
+	encoding = '1.10 1ddd 1011 1sss'
+	def emulate(state, dst, src):
+		state.main_reg[dst] = (state.main_reg[src] + 15) & -15
+
+@instruction
 class sa: # store address register to GPR (16 bits)
 	operands = 'r{dst}, a{src}'
-	encoding = '0.10 1ddd 1100 0sss'
+	encoding = '^.10 1ddd 1100 0sss'
 
 @instruction
 class sa1: # TODO
 	operands = 'r{dst}, a{src}'
-	encoding = '0.10 1ddd 1100 1sss'
+	encoding = '^.10 1ddd 1100 1sss'
 
 @instruction
 class sa_hi:
 	operands = 'r{dst}, a{src}'
-	encoding = '0.10 1ddd 1101 0sss'
+	encoding = '^.10 1ddd 1101 0sss'
 
 @instruction
 class sa_hi1: # TODO
 	operands = 'r{dst}, a{src}'
-	encoding = '0.10 1ddd 1101 1sss'
+	encoding = '^.10 1ddd 1101 1sss'
 
 @instruction
 class sa_lo:
 	operands = 'r{dst}, a{src}'
-	encoding = '0.10 1ddd 1110 0sss'
+	encoding = '^.10 1ddd 1110 0sss'
 
 @instruction
 class sa_lo1: # TODO
 	operands = 'r{dst}, a{src}'
-	encoding = '0.10 1ddd 1110 1sss'
+	encoding = '^.10 1ddd 1110 1sss'
 
 @instruction
-class op28c0: # TODO: imm=6 imm=7
-	operands = 'r{dst}, a{lhs}, {imm3}'
-	encoding = '0.10 1ddd 11ii illl'
+class not_:
+	operands = 'r{dst}, r{src}'
+	encoding = '^.10 1ddd 1111 0sss'
+	def emulate(state, dst, src):
+		state.main_reg[dst] = ~state.main_reg[src] & 0xFFFF
+
+@instruction
+class op28f8: # TODO (seems to always write 0x0006)
+	operands = 'r{dst}, a{src}'
+	encoding = '^.10 1ddd 1111 1sss'
 
 @instruction
 class op4000: # TODO
@@ -396,16 +410,16 @@ class subi:
 	def emulate(state, dst, lhs, imm3_minus_one):
 		state.main_regs[dst] = state.main_regs[lhs] - imm3_minus_one
 
-@instruction
-class opa880: # TODO
-	# imm3=7: align lhs to 16, i.e. (lhs + 15) & -15
-	operands = 'r{dst}, r{lhs}, r{rhs}'
-	encoding = '1010 1ddd 10rr rlll'
+#@instruction
+#class opa880: # TODO
+#	# imm3=7: align lhs to 16, i.e. (lhs + 15) & -15
+#	operands = 'r{dst}, r{lhs}, r{rhs}'
+#	encoding = '1010 1ddd 10rr rlll'
 
-@instruction
-class opa8c0: # TODO (the '.' is probably correct)
-	operands = 'r{dst}, r{lhs}, r{rhs}'
-	encoding = '1.10 1ddd 11rr rlll'
+#@instruction
+#class opa8c0: # TODO (the '.' is probably correct)
+#	operands = 'r{dst}, r{lhs}, r{rhs}'
+#	encoding = '1.10 1ddd 11rr rlll'
 
 @instruction
 class dw:
@@ -477,7 +491,7 @@ class Disassembler:
 					opcode += '.'
 				operands = {op.name: op.decode(word, self) for op in inst.operand_list}
 				return opcode, inst.operands.format(**operands)
-		raise NotImplementedError('unknown instruction')
+		raise NotImplementedError(f'unknown instruction 0x{word:04x}')
 
 	def label(self, prefix, address):
 		if address in self.address_to_label:
@@ -517,9 +531,13 @@ class Assembler:
 		word = 0
 		if opcode.endswith('.'):
 			opcode = opcode.removesuffix('.')
-			word = 0x4000
+			word |= 0x4000
+		if opcode.endswith('^'):
+			opcode = opcode.removesuffix('^')
+			word |= 0x8000
 		inst = instruction_dict[opcode]
-		assert word == 0 or inst.encoding[1] == '.'
+		assert word & 0x4000 == 0 or inst.encoding[1] == '.'
+		assert word & 0x8000 == 0 or inst.encoding[0] == '^'
 		word |= inst.encoding_value
 		for i, param in enumerate(inst.operand_list):
 			arg = arguments[i]
