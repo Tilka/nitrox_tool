@@ -261,7 +261,7 @@ class la_hi: # load address register (high 8 bits)
 		state.addr_reg[dst] |= (state.main_reg[src] & 0xFF) << 8
 
 @instruction
-class la_hi1: # TODO
+class la_hi1:
 	operands = 'a{dst}, r{src}'
 	encoding = '^010 1ddd 1001 1sss'
 
@@ -274,7 +274,7 @@ class la_lo: # load address register (low 8 bits)
 		state.addr_reg[dst] |= state.main_reg[src] & 0xFF
 
 @instruction
-class la_lo1: # TODO
+class la_lo1:
 	operands = 'a{dst}, r{src}'
 	encoding = '^010 1ddd 1010 1sss'
 
@@ -306,7 +306,7 @@ class sa: # store address register to GPR (16 bits)
 	encoding = '^.10 1ddd 1100 0sss'
 
 @instruction
-class sa1: # TODO
+class sa1:
 	operands = 'r{dst}, a{src}'
 	encoding = '^.10 1ddd 1100 1sss'
 
@@ -316,7 +316,7 @@ class sa_hi:
 	encoding = '^.10 1ddd 1101 0sss'
 
 @instruction
-class sa_hi1: # TODO
+class sa_hi1:
 	operands = 'r{dst}, a{src}'
 	encoding = '^.10 1ddd 1101 1sss'
 
@@ -326,7 +326,7 @@ class sa_lo:
 	encoding = '^.10 1ddd 1110 0sss'
 
 @instruction
-class sa_lo1: # TODO
+class sa_lo1:
 	operands = 'r{dst}, a{src}'
 	encoding = '^.10 1ddd 1110 1sss'
 
@@ -344,18 +344,8 @@ class op28f8: # TODO (seems to always write 0x0006)
 
 @instruction
 class op4000: # TODO
-	operands = 'r{dst}, r{lhs}, r{rhs}'
-	encoding = '0100 0ddd 00rr rlll'
-
-@instruction
-class op4040: # TODO
-	operands = 'r{dst}, r{lhs}, r{rhs}'
-	encoding = '0100 0ddd 01rr rlll'
-
-@instruction
-class op4840: # TODO
-	operands = 'r{dst}, r{lhs}, r{rhs}'
-	encoding = '0100 1ddd 01rr rlll'
+	operands = '0x{imm8:02x}'
+	encoding = '0100 0000 iiii iiii'
 
 @instruction
 class op8000: # TODO
@@ -393,8 +383,8 @@ class andi:
 
 @instruction
 class opa040: # TODO (it's not ori, changes hash output)
-	operands = 'r{dst}, r{lhs}, {imm3}'
-	encoding = '1010 0ddd 01ii illl'
+	operands = 'a{dst}, r{lhs}, r{rhs}'
+	encoding = '1010 0ddd 01rr rlll'
 
 @instruction
 class addi:
@@ -409,17 +399,6 @@ class subi:
 	encoding = '1.10 0ddd 11ii illl'
 	def emulate(state, dst, lhs, imm3_minus_one):
 		state.main_regs[dst] = state.main_regs[lhs] - imm3_minus_one
-
-#@instruction
-#class opa880: # TODO
-#	# imm3=7: align lhs to 16, i.e. (lhs + 15) & -15
-#	operands = 'r{dst}, r{lhs}, r{rhs}'
-#	encoding = '1010 1ddd 10rr rlll'
-
-#@instruction
-#class opa8c0: # TODO (the '.' is probably correct)
-#	operands = 'r{dst}, r{lhs}, r{rhs}'
-#	encoding = '1.10 1ddd 11rr rlll'
 
 @instruction
 class dw:
@@ -465,7 +444,12 @@ class Disassembler:
 				self.seg_duration = 2
 			elif opcode == 'call':
 				self.seg_duration = 0
+			is_control_flow = word & 0x1000
+			if is_control_flow:
+				lines[-1] += '\n'
 		for i, line in enumerate(lines):
+			if i and not lines[i - 1].endswith('\n') and (i in self.call_xrefs or i in self.jump_xrefs):
+				print(file=output)
 			if i in self.call_xrefs:
 				print(self.label('fun', i) + ':', file=output)
 			if i in self.jump_xrefs:
