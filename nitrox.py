@@ -87,14 +87,14 @@ def instruction(cls):
 	return cls
 
 @instruction
-class nop:
+class nop: # 1cy
 	operands = ''
 	encoding = '0000 0000 0000 0000'
 	def emulate():
 		pass
 
 @instruction
-class seg:
+class seg: # 1cy
 	operands = '{seg}'
 	encoding = '0000 0000 0000 00s1'
 	def emulate(state, segment):
@@ -111,17 +111,17 @@ class op0040: # TODO (lite)
 	encoding = '0000 0000 0100 0rrr'
 
 @instruction
-class wait_input:
+class wait_input: # 3cy
 	operands = ''
 	encoding = '0000 0000 1000 0000'
 
 @instruction
-class wait_other:
+class wait_other: # 5cy
 	operands = ''
 	encoding = '0000 0001 1000 0000'
 
 @instruction
-class jz:
+class jz: # taken: 5cy, not taken: 1cy
 	operands = '{addr}'
 	encoding = 'aa11 0aaa aaaa aaaa'
 	def emulate(state, addr):
@@ -129,7 +129,7 @@ class jz:
 			state.pc = (state.segment << 13) | addr
 
 @instruction
-class jnz:
+class jnz: # same latencies as jz
 	operands = '{addr}'
 	encoding = 'aa01 0aaa aaaa aaaa'
 	def emulate(state, addr):
@@ -137,7 +137,7 @@ class jnz:
 			state.pc = (state.segment << 13) | addr
 
 @instruction
-class js:
+class js: # same latencies as jz
 	operands = '{addr}'
 	encoding = 'aa01 1aaa aaaa aaaa'
 	def emulate(state, addr):
@@ -145,7 +145,7 @@ class js:
 			state.pc = (state.segment << 13) | addr
 
 @instruction
-class call:
+class call: # call + ret_px: 6-8cy
 	operands = '{addr_}'
 	encoding = 'aa11 1aaa aaaa aaaa'
 	def emulate(state, addr):
@@ -159,7 +159,7 @@ class ret_1000:
 	encoding = 'i000 0001 0000 0000'
 
 @instruction
-class ret_px:
+class ret_px: # call + ret_px 0: 6cy, call + ret_px 1: 8cy
 	operands = '{imm1}'
 	encoding = '0000 0010 i000 0000'
 	def emulate(state, imm1): # TODO: what does imm1 do?
@@ -167,7 +167,7 @@ class ret_px:
 		state.segment = state.pc >> 13
 
 @instruction
-class op0300: # TODO
+class op0300: # TODO 1cy
 	operands = '0x{imm8:02x}'
 	encoding = '^000 0011 iiii iiii'
 
@@ -182,66 +182,66 @@ class op0500: # TODO
 	encoding = '0000 0101 0000 0rrr'
 
 @instruction
-class op0600: # TODO
+class op0600: # TODO 1cy
 	operands = 'r{reg}'
 	encoding = '0000 0110 0000 0rrr'
 
 @instruction
-class op0700: # TODO
+class op0700: # TODO 1cy
 	operands = '0x{imm8:02x}'
 	encoding = '^000 0111 iiii iiii'
 
 @instruction
-class li: # load immediate
+class li: # load immediate (1cy)
 	operands = 'r{dst}, 0x{imm8:02x} ; {imm8}'
 	encoding = '0.00 1ddd iiii iiii'
 	def emulate(state, dst, imm8):
 		state.main_reg[dst] = imm8
 
 @instruction
-class and_: # TODO: why does the 'and' in CNPx-MC-SSL-MAIN-0018 at 0x00a4 have a '.'?
+class and_: # bitwise and (1cy)
 	operands = 'r{dst}, r{lhs}, r{rhs}'
 	encoding = '0.10 0ddd 00rr rlll'
 	def emulate(state, dst, lhs, rhs):
 		state.main_reg[dst] = state.main_reg[lhs] & state.main_regs[rhs]
 
 @instruction
-class or_:
+class or_: # bitwise or (1cy)
 	operands = 'r{dst}, r{lhs}, r{rhs}'
 	encoding = '0.10 0ddd 01rr rlll'
 	def emulate(state, dst, lhs, rhs):
 		state.main_reg[dst] = state.main_reg[lhs] | state.main_regs[rhs]
 
 @instruction
-class add:
+class add: # addition (1cy)
 	operands = 'r{dst}, r{lhs}, r{rhs}'
 	encoding = '0.10 0ddd 10rr rlll'
 	def emulate(state, dst, lhs, rhs):
 		state.main_reg[dst] = state.main_reg[lhs] + state.main_regs[rhs]
 
 @instruction
-class sub:
+class sub: # subtraction (1cy)
 	operands = 'r{dst}, r{lhs}, r{rhs}'
 	encoding = '0.10 0ddd 11rr rlll'
 	def emulate(state, dst, lhs, rhs):
 		state.main_reg[dst] = state.main_reg[lhs] - state.main_regs[rhs]
 
 @instruction
-class shli:
+class shli: # shift left by immediate (1cy)
 	operands = 'r{dst}, r{lhs}, {imm4}'
 	encoding = 'i.10 1ddd 00ii illl'
 	def emulate(state, dst, lhs, imm4):
 		state.main_reg[dst] = (state.main_reg[lhs] << imm4) & 0xFFFF
 
 @instruction
-class shri:
+class shri: # logical shift right by immediate (1cy)
 	operands = 'r{dst}, r{lhs}, {imm4}'
 	encoding = 'i.10 1ddd 01ii illl'
 	def emulate(state, dst, lhs, imm4):
 		state.main_reg[dst] = state.main_reg[lhs] >> imm4
 
 @instruction
-class la: # load address register (16 bits)
+class la: # load address register (16 bits, 1cy)
 	operands = 'a{dst}, r{src}'
 	encoding = '^010 1ddd 1000 0sss'
 	def emulate(state, dst, src):
@@ -279,7 +279,7 @@ class la_lo1:
 	encoding = '^010 1ddd 1010 1sss'
 
 @instruction
-class input: # read high-level operation, TODO: what does it do for offsets higher than 32?
+class input: # read high-level operation (1cy but sometimes hangs), TODO: what does it do for offsets higher than 32?
 	operands = 'r{dst}, r{src}'
 	encoding = '^010 1ddd 1011 0sss'
 	def emulate(state, dst, src):
@@ -287,14 +287,14 @@ class input: # read high-level operation, TODO: what does it do for offsets high
 		raise NotImplementedError
 
 @instruction
-class align8:
+class align8: # 1cy
 	operands = 'r{dst}, r{src}'
 	encoding = '0.10 1ddd 1011 1sss'
 	def emulate(state, dst, src):
 		state.main_reg[dst] = (state.main_reg[src] + 7) & -7
 
 @instruction
-class align16:
+class align16: # 1cy
 	operands = 'r{dst}, r{src}'
 	encoding = '1.10 1ddd 1011 1sss'
 	def emulate(state, dst, src):
@@ -338,7 +338,7 @@ class not_:
 		state.main_reg[dst] = ~state.main_reg[src] & 0xFFFF
 
 @instruction
-class op28f8: # TODO (seems to always write 0x0006)
+class op28f8: # 1cy, TODO (seems to always write 0x0006)
 	operands = 'r{dst}, a{src}'
 	encoding = '^.10 1ddd 1111 1sss'
 
@@ -444,7 +444,7 @@ class Disassembler:
 				self.seg_duration = 2
 			elif opcode == 'call':
 				self.seg_duration = 0
-			is_control_flow = word & 0x1000
+			is_control_flow = opcode.startswith('j')
 			if is_control_flow:
 				lines[-1] += '\n'
 		for i, line in enumerate(lines):
