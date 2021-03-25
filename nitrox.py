@@ -13,10 +13,10 @@ instruction_dict = {}
 
 class Operand:
 	def __init__(self, desc, enc):
-		matches = re.search(r'((?P<is_main_reg>r)|(?P<is_addr_reg>a))?\{(?P<name>[^:}]+)(:[^}]+)?\}', desc)
+		matches = re.search(r'((?P<is_main_reg>r)|(?P<is_temp_reg>a|b|c|d))?\{(?P<name>[^:}]+)(:[^}]+)?\}', desc)
 		self.name = matches.group('name')
 		self.is_main_reg = matches.group('is_main_reg') is not None
-		self.is_addr_reg = matches.group('is_addr_reg') is not None
+		self.is_temp_reg = matches.group('is_temp_reg') is not None
 		self.mask = self.compute_mask(self.name[0], enc)
 
 	def compute_mask(self, char, enc):
@@ -26,9 +26,8 @@ class Operand:
 		if self.is_main_reg:
 			assert string.startswith('r')
 			string = string.removeprefix('r')
-		if self.is_addr_reg:
-			assert string.startswith('a')
-			string = string.removeprefix('a')
+		if self.is_temp_reg:
+			string = string[1:]
 		value = int(string, 16 if string.startswith('0x') else 10)
 		return self.encode_value(value)
 
@@ -168,8 +167,8 @@ class ret_px: # call + ret_px 0: 6cy, call + ret_px 1: 8cy
 
 @instruction
 class op0300: # TODO 1cy
-	operands = '0x{imm8:02x}'
-	encoding = '^000 0011 iiii iiii'
+	operands = 'r{reg}'
+	encoding = '^000 0011 0000 0rrr'
 
 @instruction
 class op0400: # TODO (lite)
@@ -241,42 +240,96 @@ class shri: # logical shift right by immediate (1cy)
 		state.main_reg[dst] = state.main_reg[lhs] >> imm4
 
 @instruction
-class la: # load address register (16 bits, 1cy)
+class la: # load A temp register (16 bits, 1cy)
 	operands = 'a{dst}, r{src}'
-	encoding = '^010 1ddd 1000 0sss'
+	encoding = '0010 1ddd 1000 0sss'
 	def emulate(state, dst, src):
-		state.addr_reg[dst] = state.main_reg[src]
+		state.temp_reg[dst] = state.main_reg[src]
 
 @instruction
-class la1: # TODO: different register or upper 32 bits?
-	operands = 'a{dst}, r{src}'
-	encoding = '^010 1ddd 1000 1sss'
+class lb: # load B temp register (16 bits, 1cy)
+	operands = 'b{dst}, r{src}'
+	encoding = '0010 1ddd 1000 1sss'
+	def emulate(state, dst, src):
+		state.temp_reg[dst] = state.main_reg[src]
 
 @instruction
-class la_hi: # load address register (high 8 bits)
+class lc: # load C temp register (16 bits, 1cy)
+	operands = 'c{dst}, r{src}'
+	encoding = '1010 1ddd 1000 0sss'
+	def emulate(state, dst, src):
+		state.temp_reg[dst] = state.main_reg[src]
+
+@instruction
+class ld: # load D temp register (16 bits, 1cy)
+	operands = 'd{dst}, r{src}'
+	encoding = '1010 1ddd 1000 1sss'
+	def emulate(state, dst, src):
+		state.temp_reg[dst] = state.main_reg[src]
+
+@instruction
+class la_hi: # load A temp register (high 8 bits)
 	operands = 'a{dst}, r{src}'
-	encoding = '^010 1ddd 1001 0sss'
+	encoding = '0010 1ddd 1001 0sss'
 	def emulate(state, dst, src):
 		state.addr_reg[dst] &= 0xFF
 		state.addr_reg[dst] |= (state.main_reg[src] & 0xFF) << 8
 
 @instruction
-class la_hi1:
-	operands = 'a{dst}, r{src}'
-	encoding = '^010 1ddd 1001 1sss'
+class lb_hi: # load B temp register (high 8 bits)
+	operands = 'b{dst}, r{src}'
+	encoding = '0010 1ddd 1001 1sss'
+	def emulate(state, dst, src):
+		state.addr_reg[dst] &= 0xFF
+		state.addr_reg[dst] |= (state.main_reg[src] & 0xFF) << 8
 
 @instruction
-class la_lo: # load address register (low 8 bits)
+class lc_hi: # load C temp register (high 8 bits)
+	operands = 'c{dst}, r{src}'
+	encoding = '1010 1ddd 1001 0sss'
+	def emulate(state, dst, src):
+		state.addr_reg[dst] &= 0xFF
+		state.addr_reg[dst] |= (state.main_reg[src] & 0xFF) << 8
+
+@instruction
+class ld_hi: # load D temp register (high 8 bits)
+	operands = 'd{dst}, r{src}'
+	encoding = '1010 1ddd 1001 1sss'
+	def emulate(state, dst, src):
+		state.addr_reg[dst] &= 0xFF
+		state.addr_reg[dst] |= (state.main_reg[src] & 0xFF) << 8
+
+@instruction
+class la_lo: # load A temp register (low 8 bits)
 	operands = 'a{dst}, r{src}'
-	encoding = '^010 1ddd 1010 0sss'
+	encoding = '0010 1ddd 1010 0sss'
 	def emulate(state, dst, src):
 		state.addr_reg[dst] &= 0xFF00
 		state.addr_reg[dst] |= state.main_reg[src] & 0xFF
 
 @instruction
-class la_lo1:
-	operands = 'a{dst}, r{src}'
-	encoding = '^010 1ddd 1010 1sss'
+class lb_lo: # load B temp register (low 8 bits)
+	operands = 'b{dst}, r{src}'
+	encoding = '0010 1ddd 1010 1sss'
+	def emulate(state, dst, src):
+		state.tmp_reg[dst+8] &= 0xFF00
+		state.tmp_reg[dst+8] |= state.main_reg[src] & 0xFF
+
+@instruction
+class lc_lo: # load C temp register (low 8 bits)
+	operands = 'c{dst}, r{src}'
+	encoding = '1010 1ddd 1010 0sss'
+	def emulate(state, dst, src):
+		state.tmp_reg[dst+16] &= 0xFF00
+		state.tmp_reg[dst+16] |= state.main_reg[src] & 0xFF
+
+@instruction
+class ld_lo: # load D temp register (low 8 bits)
+	operands = 'd{dst}, r{src}'
+	encoding = '1010 1ddd 1010 1sss'
+	def emulate(state, dst, src):
+		state.tmp_reg[dst+24] &= 0xFF00
+		state.tmp_reg[dst+24] |= state.main_reg[src] & 0xFF
 
 @instruction
 class input: # read high-level operation (1cy but sometimes hangs), TODO: what does it do for offsets higher than 32?
@@ -303,69 +356,96 @@ class align16: # 1cy
 @instruction
 class sa: # store address register to GPR (16 bits)
 	operands = 'r{dst}, a{src}'
-	encoding = '^.10 1ddd 1100 0sss'
+	encoding = '0.10 1ddd 1100 0sss'
 
 @instruction
-class sa1:
-	operands = 'r{dst}, a{src}'
-	encoding = '^.10 1ddd 1100 1sss'
+class sb:
+	operands = 'r{dst}, b{src}'
+	encoding = '0.10 1ddd 1100 1sss'
+
+@instruction
+class sc:
+	operands = 'r{dst}, c{src}'
+	encoding = '1.10 1ddd 1100 0sss'
+
+@instruction
+class sd:
+	operands = 'r{dst}, d{src}'
+	encoding = '1.10 1ddd 1100 1sss'
 
 @instruction
 class sa_hi:
 	operands = 'r{dst}, a{src}'
-	encoding = '^.10 1ddd 1101 0sss'
+	encoding = '0.10 1ddd 1101 0sss'
 
 @instruction
-class sa_hi1:
-	operands = 'r{dst}, a{src}'
-	encoding = '^.10 1ddd 1101 1sss'
+class sb_hi:
+	operands = 'r{dst}, b{src}'
+	encoding = '0.10 1ddd 1101 1sss'
+
+@instruction
+class sc_hi:
+	operands = 'r{dst}, c{src}'
+	encoding = '1.10 1ddd 1101 0sss'
+
+@instruction
+class sd_hi:
+	operands = 'r{dst}, d{src}'
+	encoding = '1.10 1ddd 1101 1sss'
 
 @instruction
 class sa_lo:
 	operands = 'r{dst}, a{src}'
-	encoding = '^.10 1ddd 1110 0sss'
+	encoding = '0.10 1ddd 1110 0sss'
 
 @instruction
-class sa_lo1:
-	operands = 'r{dst}, a{src}'
-	encoding = '^.10 1ddd 1110 1sss'
+class sb_lo:
+	operands = 'r{dst}, b{src}'
+	encoding = '0.10 1ddd 1110 1sss'
+
+@instruction
+class sc_lo:
+	operands = 'r{dst}, c{src}'
+	encoding = '1.10 1ddd 1110 0sss'
+
+@instruction
+class sd_lo:
+	operands = 'r{dst}, d{src}'
+	encoding = '1.10 1ddd 1110 1sss'
 
 @instruction
 class not_:
 	operands = 'r{dst}, r{src}'
-	encoding = '^.10 1ddd 1111 0sss'
+	encoding = '0.10 1ddd 1111 0sss'
 	def emulate(state, dst, src):
 		state.main_reg[dst] = ~state.main_reg[src] & 0xFFFF
 
 @instruction
-class op28f8: # 1cy, TODO (seems to always write 0x0006)
+class op28f8: # TODO (1cy)
+	# dst is definitely a GPR
+	# always writes 0x0006 (operation code?)
+	# the '.' is correct
+	# the '^' might be a different opcode (a1 reads random stuff)
 	operands = 'r{dst}, a{src}'
 	encoding = '^.10 1ddd 1111 1sss'
 
 @instruction
-class op4000: # TODO
-	operands = '0x{imm8:02x}'
-	encoding = '0100 0000 iiii iiii'
+class op4000: # TODO (1cy)
+	# src is definitely a GPR
+	# imm4=3 fucks up SHA1 hashes (didn't test other hashes)
+	# imm4=a stalls the next op4000 for 122 cycles (!)
+	operands = '0x{imm4:x}, r{src}'
+	encoding = '0100 0000 0iii isss'
 
 @instruction
 class op8000: # TODO
-	operands = 'r{dst}, r{lhs}, r{rhs}'
-	encoding = '1000 0ddd 00rr rlll'
+	operands = '0x{imm8:02x}, r{reg} ; {imm8}'
+	encoding = '1000 0iii iiii irrr'
 
 @instruction
-class op8040: # TODO
-	operands = 'r{dst}, r{lhs}, r{rhs}'
-	encoding = '1000 0ddd 01rr rlll'
-
-@instruction
-class op8080: # TODO
-	operands = 'r{dst}, r{lhs}, r{rhs}'
-	encoding = '1000 0ddd 10rr rlll'
-
-@instruction
-class op80c0: # TODO
-	operands = 'r{dst}, r{lhs}, r{rhs}'
-	encoding = '1000 0ddd 11rr rlll'
+class opc000: # TODO
+	operands = '0x{imm8:02x}, r{reg} ; {imm8}'
+	encoding = '1100 0iii iiii irrr'
 
 @instruction
 class lis: # load immediate shifted (flags are set according to the whole 16-bit register)
@@ -400,10 +480,10 @@ class subi:
 	def emulate(state, dst, lhs, imm3_minus_one):
 		state.main_regs[dst] = state.main_regs[lhs] - imm3_minus_one
 
-@instruction
-class dw:
-	operands = '0x{imm16:04x}'
-	encoding = 'iiii iiii iiii iiii'
+#@instruction
+#class dw:
+#	operands = '0x{imm16:04x}'
+#	encoding = 'iiii iiii iiii iiii'
 
 class Disassembler:
 	def __init__(self, filename, args):
@@ -412,11 +492,16 @@ class Disassembler:
 			output = open(args.output, 'w+')
 		else:
 			output = sys.stdout
-		print(f'.type {mc.mc_type}', file=output)
-		print(f'.version {mc.version} ; {filename}', file=output)
-		print(f'.sram_addr 0x{mc.sram_addr:04x}', file=output)
-		if not args.disassemble:
-			return
+		if not args.stat:
+			if args.disassemble:
+				print(f'.type {mc.mc_type}', file=output)
+			if True:
+				print(f'.version {mc.version} ; {filename}', file=output)
+			if args.disassemble:
+				print(f'.sram_addr 0x{mc.sram_addr:04x}', file=output)
+			if not args.disassemble:
+				return
+		self.segment = 0
 		self.seg_duration = 0
 		self.address_to_label = {}
 		if args.labels:
@@ -428,33 +513,46 @@ class Disassembler:
 		self.jump_xrefs = set()
 		for i in range(0, len(mc.code), 4):
 			address = i // 4
-			if self.seg_duration == 0:
-				self.segment = address >> 13
-			else:
+			if self.seg_duration > 0:
 				self.seg_duration -= 1
+			elif not args.diff:
+				self.segment = address >> 13
 			word = struct.unpack('>I', mc.code[i:i+4])[0] & 0xFFFF
+			if args.diff and word & 0x1000:
+				word &= 0x3800
 			opcode, operands = self.instruction(word)
 			asm = (opcode.ljust(10) + operands).ljust(29)
-			lines.append(f'\t{asm} ; {address:04x}: 0x{word:04x} ({word>>12&15:04b} {word>>8&15:04b} {word>>4&15:04b} {word&15:04b})')
-			#lines.append(f'\t{asm} ; 0x{word:04x} ({word>>12&15:04b} {word>>8&15:04b} {word>>4&15:04b} {word&15:04b})')
+			if args.stat:
+				line = f'{word:04x} ({word>>12&15:04b} {word>>8&15:04b} {word>>4&15:04b} {word&15:04b}) {asm}'
+			elif args.diff:
+				line = f'\t{asm} ; 0x{word:04x} ({word>>12&15:04b} {word>>8&15:04b} {word>>4&15:04b} {word&15:04b})'
+			else:
+				line = f'\t{asm} ; {address:04x}: 0x{word:04x} ({word>>12&15:04b} {word>>8&15:04b} {word>>4&15:04b} {word&15:04b})'
 			# hack to make segmented addressing work,
 			# in reality the segment is probably just state that gets pushed onto the call stack
 			if opcode == 'seg':
+				# completely ignore seg when diffing
+				if args.diff:
+					continue
 				self.segment = (word >> 1) & 1
 				self.seg_duration = 2
 			elif opcode == 'call':
 				self.seg_duration = 0
+			lines.append(line)
 			is_control_flow = opcode.startswith('j')
-			if is_control_flow:
+			if is_control_flow and not args.stat and not args.diff:
 				lines[-1] += '\n'
 		for i, line in enumerate(lines):
-			if i and not lines[i - 1].endswith('\n') and (i in self.call_xrefs or i in self.jump_xrefs):
-				print(file=output)
-			if i in self.call_xrefs:
-				print(self.label('fun', i) + ':', file=output)
-			if i in self.jump_xrefs:
-				print(self.label('loc', i) + ':', file=output)
+			if not args.stat:
+				if i and not lines[i - 1].endswith('\n') and (i in self.call_xrefs or i in self.jump_xrefs):
+					print(file=output)
+				if i in self.call_xrefs:
+					print(self.label('fun', i) + ':', file=output)
+				if i in self.jump_xrefs:
+					print(self.label('loc', i) + ':', file=output)
 			print(line, file=output)
+		if args.stat:
+			return
 		for i in range(0, len(mc.data), 8):
 			word = mc.data[i:i+8]
 			hex_word = ' '.join([f'{byte:02x}' for byte in word])
@@ -611,6 +709,7 @@ if __name__ == '__main__':
 	parser.add_argument('-l', '--labels')
 	parser.add_argument('-a', '--assemble', action='store_true')
 	parser.add_argument('-d', '--disassemble', action='store_true')
+	parser.add_argument('--stat', action='store_true')
 	parser.add_argument('--diff', action='store_true')
 	args = parser.parse_args()
 	for filename in args.filename:
