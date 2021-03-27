@@ -487,7 +487,7 @@ class subi:
 
 class Disassembler:
 	def __init__(self, filename, args):
-		self.mc = mc = Microcode(path=filename)
+		self.mc = mc = Microcode(path=filename, raw=args.raw)
 		if args.output:
 			output = open(args.output, 'w+')
 		else:
@@ -646,20 +646,27 @@ class Assembler:
 		self.mc.signature += binascii.unhexlify(hex_bytes.replace(' ', ''))
 
 class Microcode:
-	def __init__(self, path=None):
+	def __init__(self, path=None, raw=False):
 		if path is not None:
-			self.load(path)
+			self.load(path, raw)
 		else:
-			self.mc_type = 1
-			self.version = 'undefined'
-			self.sram_addr = 0
-			self.code = []
-			self.data = b''
-			self.signature = b''
+			self.init_empty()
 
-	def load(self, path):
+	def init_empty(self):
+		self.mc_type = 1
+		self.version = 'undefined'
+		self.sram_addr = 0
+		self.code = []
+		self.data = b''
+		self.signature = b''
+
+	def load(self, path, raw):
 		with open(path, 'rb') as f:
 			d = f.read()
+		if raw:
+			self.init_empty()
+			self.code = d
+			return
 		self.mc_type, self.version, code_len, data_len, self.sram_addr = struct.unpack_from('>B31sIIQ', d)
 		self.version = self.version.rstrip(b'\x00').decode('ascii')
 		if self.version.startswith('CNN5x'):
@@ -711,6 +718,7 @@ if __name__ == '__main__':
 	parser.add_argument('-d', '--disassemble', action='store_true')
 	parser.add_argument('--stat', action='store_true')
 	parser.add_argument('--diff', action='store_true')
+	parser.add_argument('--raw', action='store_true')
 	args = parser.parse_args()
 	for filename in args.filename:
 		if args.assemble:
