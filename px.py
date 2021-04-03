@@ -12,7 +12,7 @@ class nop: # 1cy
 @instruction
 class seg: # 1cy
 	operands = '{seg}'
-	encoding = '0000 0000 0000 00s1'
+	encoding = '0000 0000 0000 0ss1'
 	def emulate(state, segment):
 		state.segment = segment
 

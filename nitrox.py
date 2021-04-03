@@ -145,7 +145,7 @@ class Disassembler:
 				# completely ignore seg when diffing
 				if args.diff:
 					continue
-				self.segment = (word >> 1) & 1
+				self.segment = (word >> 1) & 3
 				self.seg_duration = 2
 			elif opcode == 'call':
 				self.seg_duration = 0
