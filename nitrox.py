@@ -84,10 +84,8 @@ def instruction(cls):
 def do_import(gen):
 	if gen == 1:
 		import lite
-	elif gen == 2 or gen == 3:
+	elif gen == 2 or gen == 3 or gen == 5 or gen == 8:
 		import px
-	elif gen == 5 or gen == 8:
-		import gen5
 	else:
 		raise NotImplementedError(gen)
 

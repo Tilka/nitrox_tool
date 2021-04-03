@@ -231,24 +231,31 @@ class ld_lo: # load D temp register (low 8 bits)
 @instruction
 class input: # read high-level operation (1cy but sometimes hangs), TODO: what does it do for offsets higher than 32?
 	operands = 'r{dst}, r{src}'
-	encoding = '^010 1ddd 1011 0sss'
+	encoding = '0010 1ddd 1011 0sss'
 	def emulate(state, dst, src):
 		# main_reg[src] is an offset
 		raise NotImplementedError
+
+@instruction
+class inc:
+	operands = 'r{dst}, r{src}'
+	encoding = '1.10 1ddd 1011 0sss'
+	def emulate(state, dst, src):
+		state.main_reg[dst] = state.main_reg[src] + 1
 
 @instruction
 class align8: # 1cy
 	operands = 'r{dst}, r{src}'
 	encoding = '0.10 1ddd 1011 1sss'
 	def emulate(state, dst, src):
-		state.main_reg[dst] = (state.main_reg[src] + 7) & -7
+		state.main_reg[dst] = (state.main_reg[src] + 7) & (-7 & 0xFFFF)
 
 @instruction
 class align16: # 1cy
 	operands = 'r{dst}, r{src}'
 	encoding = '1.10 1ddd 1011 1sss'
 	def emulate(state, dst, src):
-		state.main_reg[dst] = (state.main_reg[src] + 15) & -15
+		state.main_reg[dst] = (state.main_reg[src] + 15) & (-15 & 0xFFFF)
 
 @instruction
 class sa: # store address register to GPR (16 bits)
@@ -316,6 +323,13 @@ class not_:
 	encoding = '0.10 1ddd 1111 0sss'
 	def emulate(state, dst, src):
 		state.main_reg[dst] = ~state.main_reg[src] & 0xFFFF
+
+@instruction
+class align4:
+	operands = 'r{dst}, r{src}'
+	encoding = '1.10 1ddd 1111 0sss'
+	def emulate(state, dst, src):
+		state.main_reg[dst] = (state.main_reg[src] + 3) & (-3 & 0xFFFF)
 
 @instruction
 class op28f8: # TODO (1cy)
