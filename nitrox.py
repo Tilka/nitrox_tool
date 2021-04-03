@@ -289,7 +289,7 @@ class Microcode:
 				self.gen = gen
 				break
 		else:
-			raise NotImplementedError(prefix)
+			raise NotImplementedError(repr(prefix))
 
 	def load(self, path, args):
 		with open(path, 'rb') as f:
@@ -299,7 +299,12 @@ class Microcode:
 			self.code = d
 			self.gen = args.arch
 			return
-		self.mc_type, version, code_len, data_len, self.sram_addr = struct.unpack_from('>B31sIIQ', d)
+		if d[4:7] == b'O8x':
+			self.mc_type, version, code_len, data_len, self.sram_addr = struct.unpack_from('>I44sIIQ', d)
+			code_start = 0x40
+		else:
+			self.mc_type, version, code_len, data_len, self.sram_addr = struct.unpack_from('>B31sIIQ', d)
+			code_start = 0x30
 		self.set_version(version.rstrip(b'\x00').decode('ascii'))
 
 		def alignup16(x):
@@ -310,7 +315,6 @@ class Microcode:
 		else:
 			self.inst_size = 4
 
-		code_start = 0x30
 		code_len *= self.inst_size
 		code_end = code_start + code_len
 		data_start = alignup16(code_end)
