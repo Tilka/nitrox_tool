@@ -81,21 +81,19 @@ def instruction(cls):
 	instruction_dict[cls.name] = cls
 	return cls
 
-def do_import(args, version):
-	if args.arch is not None:
-		__import__(args.arch)
-		return
-	arch = version.split('-')[0]
-	if arch in ('CN1000', 'CNLite', 'CNlite'):
+def do_import(gen):
+	if gen == 1:
 		import lite
-	elif arch in ('CNPx', 'CN35x', 'CNN35x'):
+	elif gen == 2 or gen == 3:
 		import px
+	elif gen == 5 or gen == 8:
+		import gen5
 	else:
-		raise NotImplementedError(version, arch)
+		raise NotImplementedError(gen)
 
 class Disassembler:
 	def __init__(self, filename, args):
-		self.mc = mc = Microcode(path=filename, raw=args.raw)
+		self.mc = mc = Microcode(filename, args)
 		if args.output:
 			output = open(args.output, 'w+')
 		else:
@@ -119,14 +117,20 @@ class Disassembler:
 		lines = []
 		self.call_xrefs = set()
 		self.jump_xrefs = set()
-		do_import(args, self.mc.version)
-		for i in range(0, len(mc.code), 4):
-			address = i // 4
+		do_import(self.mc.gen)
+		for i in range(0, len(mc.code), self.mc.inst_size):
+			address = i // self.mc.inst_size
 			if self.seg_duration > 0:
 				self.seg_duration -= 1
 			elif not args.diff:
 				self.segment = address >> 13
-			word = struct.unpack('>I', mc.code[i:i+4])[0] & 0xFFFF
+			if self.mc.inst_size == 2:
+				if self.mc.gen == 5:
+					word = struct.unpack('<H', mc.code[i:i+2])[0]
+				else:
+					word = struct.unpack('>H', mc.code[i:i+2])[0]
+			else:
+				word = struct.unpack('>I', mc.code[i:i+4])[0] & 0xFFFF
 			if args.diff and word & 0x1000:
 				word &= 0x3800
 			opcode, operands = self.instruction(word)
@@ -220,7 +224,7 @@ class Assembler:
 		if opcode.startswith('.'):
 			return getattr(self, 'handle_' + opcode[1:])(*arguments)
 		if len(instruction_list) == 0:
-			do_import(args, self.mc.version)
+			do_import(self.mc.gen)
 		word = 0
 		if opcode.endswith('.'):
 			opcode = opcode.removesuffix('.')
@@ -245,7 +249,7 @@ class Assembler:
 		self.mc.mc_type = int(mc_type)
 
 	def handle_version(self, version):
-		self.mc.version = version
+		self.mc.set_version(version)
 
 	def handle_sram_addr(self, addr):
 		self.mc.sram_addr = int(addr, 16)
@@ -257,9 +261,9 @@ class Assembler:
 		self.mc.signature += binascii.unhexlify(hex_bytes.replace(' ', ''))
 
 class Microcode:
-	def __init__(self, path=None, raw=False):
+	def __init__(self, path=None, args=None):
 		if path is not None:
-			self.load(path, raw)
+			self.load(path, args)
 		else:
 			self.init_empty()
 
@@ -271,24 +275,43 @@ class Microcode:
 		self.data = b''
 		self.signature = b''
 
-	def load(self, path, raw):
+	def set_version(self, version):
+		self.version = version
+		prefix = self.version.split('-')[0]
+		generations = [
+			(1, ['CN1000', 'CNLite', 'CNlite']),
+			(2, ['CNPx']),
+			(3, ['CN35x', 'CNN35x']),
+			(5, ['CNN5x']),
+			(8, ['CNT8x', 'O8x'])]
+		for gen, prefixes in generations:
+			if prefix in prefixes:
+				self.gen = gen
+				break
+		else:
+			raise NotImplementedError(prefix)
+
+	def load(self, path, args):
 		with open(path, 'rb') as f:
 			d = f.read()
-		if raw:
+		if args.raw:
 			self.init_empty()
 			self.code = d
+			self.gen = args.arch
 			return
-		self.mc_type, self.version, code_len, data_len, self.sram_addr = struct.unpack_from('>B31sIIQ', d)
-		self.version = self.version.rstrip(b'\x00').decode('ascii')
-		if self.version.startswith('CNN5x'):
-			code_len *= 2
-		else:
-			code_len *= 4
+		self.mc_type, version, code_len, data_len, self.sram_addr = struct.unpack_from('>B31sIIQ', d)
+		self.set_version(version.rstrip(b'\x00').decode('ascii'))
 
 		def alignup16(x):
 			return (x + 15) & ~15
 
+		if self.gen >= 5:
+			self.inst_size = 2
+		else:
+			self.inst_size = 4
+
 		code_start = 0x30
+		code_len *= self.inst_size
 		code_end = code_start + code_len
 		data_start = alignup16(code_end)
 		data_end = data_start + data_len
@@ -330,7 +353,7 @@ if __name__ == '__main__':
 	parser.add_argument('--stat', action='store_true', help='optimize output for computing instruction stats')
 	parser.add_argument('--diff', action='store_true', help='optimize output for diffing (lossy)')
 	parser.add_argument('--raw', action='store_true', help='load raw code blob')
-	parser.add_argument('--arch', help='force architecture (lite or px), necessary when using --raw')
+	parser.add_argument('--arch', type=int, help='force architecture (1, 2, 3, 5, 8), necessary when using --raw')
 	args = parser.parse_args()
 	for filename in args.filename:
 		if args.assemble:

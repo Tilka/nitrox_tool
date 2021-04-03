@@ -21,5 +21,7 @@ Many instructions have:
 - refactor
 - add a little bit of macro support
 - how to recover from a call stack overflow? (exceptions?)
-- Nitrox II (haven't looked for microcode yet)
-- Nitrox V (microcode has no parity information anymore, unsure whether it still uses 16-bit instructions)
+- Nitrox II (no products found yet)
+- ThunderX/Octeon8 (dropped address+parity)
+- Nitrox V (changed from big-endian to little-endian)
+- ThunderX2 (no microcode found yet)
