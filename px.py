@@ -84,7 +84,7 @@ class op0600: # TODO 1cy
 
 @instruction
 class op0700: # TODO 1cy
-	operands = '0x{imm8:02x}'
+	operands = '0x{imm8:02x} ; {imm8}'
 	encoding = '0000 0111 iiii iiii'
 
 @instruction
@@ -229,15 +229,16 @@ class ld_lo: # load D temp register (low 8 bits)
 		state.tmp_reg[dst+24] |= state.main_reg[src] & 0xFF
 
 @instruction
-class input: # read high-level operation (1cy but sometimes hangs), TODO: what does it do for offsets higher than 32?
+class input: # read high-level operation (1cy but sometimes hangs)
 	operands = 'r{dst}, r{src}'
 	encoding = '0010 1ddd 1011 0sss'
 	def emulate(state, dst, src):
-		# main_reg[src] is an offset
+		state.main_reg[dst] = state.memory[state.main_reg[src]]
+		state.main_reg[src] += 1
 		raise NotImplementedError
 
 @instruction
-class inc:
+class inc: # FIXME: doesn't always increment
 	operands = 'r{dst}, r{src}'
 	encoding = '1.10 1ddd 1011 0sss'
 	def emulate(state, dst, src):
@@ -336,21 +337,33 @@ class op28f8: # TODO (1cy)
 	# dst is definitely a GPR
 	# always writes 0x0006 (operation code?)
 	# the '.' is correct
-	# the '^' might be a different opcode (a0 reads core ID, a1 reads random stuff)
 	operands = 'r{dst}, a{src}'
-	encoding = '^.10 1ddd 1111 1sss'
+	encoding = '0.10 1ddd 1111 1sss'
+
+@instruction
+class opa8f8: # TODO (1cy)
+	# dst is definitely a GPR
+	# the '.' is correct
+	# a0 reads core ID, a1 reads random stuff
+	operands = 'r{dst}, a{src}'
+	encoding = '1.10 1ddd 1111 1sss'
 
 @instruction
 class op4000: # TODO (1cy)
 	# src is definitely a GPR
 	# imm4=3 fucks up SHA1 hashes (didn't test other hashes)
 	# imm4=a stalls the next op4000 for 122 cycles (!)
+	# 4/5: read or write pointer?
+	# c/d: read or write pointer?
 	operands = '0x{imm4:x}, r{src}'
 	encoding = '0100 0000 0iii isss'
 
 @instruction
 class op8000: # TODO
-	operands = '0x{imm4:x}, 0x{jmm9:03x}'
+	# jmm is definitely an immediate (at least 8 bits)
+	# op4000 and op8000 are the same thing, just GPR operand vs immediate operand
+	# (compare CNPx-MC-SSL-MAIN-0022:0e84 and CNPx-MC-SSL-MAIN-0026:0c59)
+	operands = '0x{imm4:x}, 0x{jmm8:02x} ; {jmm8}'
 	encoding = '1i00 0jjj jjjj jiii'
 
 #@instruction
@@ -373,9 +386,12 @@ class andi:
 		state.main_reg[dst] = state.main_reg[lhs] & imm3_minus_one
 
 @instruction
-class opa040: # TODO (it's not ori, changes hash output)
-	operands = 'a{dst}, r{lhs}, r{rhs}'
+class output:
+	operands = 'r{dst}, r{lhs}, r{rhs}'
 	encoding = '1.10 0ddd 01rr rlll'
+	def emulate(state, dst, lhs, rhs):
+		state.memory[state.main_reg[lhs]] = state.main_reg[rhs]
+		state.main_reg[dst] = state.main_reg[lhs] + 1
 
 @instruction
 class addi:
