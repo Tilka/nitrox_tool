@@ -15,8 +15,8 @@ All Except O8x:
 - 4 bytes: number of instructions (size varies)
 - 4 bytes: data length in bytes (multiple of 8)
 - code section
--- old format (4 bytes per instruction): 15 bits IRAM address, 1 bit parity, 16 bits instruction
--- new format (2 bytes per instruction): 16 bits instruction (little-endian on Nitrox V)
+    - old format (4 bytes per instruction): 15 bits IRAM address, 1 bit parity, 16 bits instruction
+    - new format (2 bytes per instruction): 16 bits instruction (little-endian on Nitrox V)
 - align to 16 bytes
 - data section
 - align to 16 bytes
@@ -36,9 +36,9 @@ O8x:
 - zero flag (result is zero)
 - 32-entry call stack
 - peculiarities:
--- no unconditional jump instruction
--- shift instructions on Nitrox 1/Lite are very limited: shr1, shr3, shl3
--- no way to directly load immediate into upper 8 bits on Nitrox 1/Lite
+    - no unconditional jump instruction
+    - shift instructions on Nitrox 1/Lite are very limited: shr1, shr3, shl3
+    - no way to directly load immediate into upper 8 bits on Nitrox 1/Lite
 
 Many instructions have:
 - a stall bit (on Nitrox 1/Lite, '^' suffix)
