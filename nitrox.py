@@ -289,6 +289,13 @@ class Microcode:
 		else:
 			raise NotImplementedError(repr(prefix))
 
+	def set_inst_size(self):
+		if self.gen >= 5:
+			self.inst_size = 2
+		else:
+			self.inst_size = 4
+
+
 	def load(self, path, args):
 		with open(path, 'rb') as f:
 			d = f.read()
@@ -296,6 +303,7 @@ class Microcode:
 			self.init_empty()
 			self.code = d
 			self.gen = args.arch
+			self.set_inst_size()
 			return
 		if d[4:7] == b'O8x':
 			self.mc_type, version, code_len, data_len, self.sram_addr = struct.unpack_from('>I44sIIQ', d)
@@ -308,11 +316,7 @@ class Microcode:
 		def alignup16(x):
 			return (x + 15) & ~15
 
-		if self.gen >= 5:
-			self.inst_size = 2
-		else:
-			self.inst_size = 4
-
+		self.set_inst_size()
 		code_len *= self.inst_size
 		code_end = code_start + code_len
 		data_start = alignup16(code_end)
