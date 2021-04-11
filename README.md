@@ -1,10 +1,15 @@
 # Nitrox tool
 An assembler and disassembler for microcode of Cavium (now Marvell) Nitrox crypto accelerators.
 
-## Microcode format
+## Getting Started
+```sh
+$ nitrox.py -d CNPx-MC-BOOT-2.00
+```
+
+## Microcode Format
 Everything is big-endian unless indicated otherwise.
 
-### All except O8x
+All Except O8x:
 - 1 byte: type
 - 31 bytes: version (ASCII, zero padded)
 - 4 bytes: number of instructions (size varies)
@@ -18,7 +23,7 @@ Everything is big-endian unless indicated otherwise.
 - 256 bytes: signature (unknown format, unused)
 - copyright notice (optional, unused)
 
-### O8x
+O8x:
 - 4 bytes: unknown
 - 44 bytes: version
 - the rest is the same
