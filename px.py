@@ -17,12 +17,12 @@ class seg: # 1cy
 		state.segment = segment
 
 @instruction
-class wait_input: # 3cy
+class wait_load: # 3cy, used to wait for loads
 	operands = ''
 	encoding = '0000 0000 1000 0000'
 
 @instruction
-class wait_other: # 5cy
+class wait_other: # 5cy, used to wait for register writes (e.g. to use getdcr)
 	operands = ''
 	encoding = '0000 0001 1000 0000'
 
@@ -68,22 +68,22 @@ class ret: # call + ret 0: 6cy, call + ret 1: 8cy
 		state.segment = state.pc >> 13
 
 @instruction
-class op0300: # TODO 1cy
+class op_300: # TODO 1cy
 	operands = 'r{reg}'
 	encoding = '0000 0011 0000 0rrr'
 
 @instruction
-class op0500: # TODO
+class emit_lo: # TODO
 	operands = 'r{reg}'
 	encoding = '0000 0101 0000 0rrr'
 
 @instruction
-class op0600: # TODO 1cy
+class emit_hi: # TODO 1cy
 	operands = 'r{reg}'
 	encoding = '0000 0110 0000 0rrr'
 
 @instruction
-class op0700: # TODO 1cy
+class emit: # TODO 1cy
 	operands = '0x{imm8:02x} ; {imm8}'
 	encoding = '0000 0111 iiii iiii'
 
@@ -229,13 +229,13 @@ class ld_lo: # load D temp register (low 8 bits)
 		state.tmp_reg[dst+24] |= state.main_reg[src] & 0xFF
 
 @instruction
-class input: # read high-level operation (1cy but sometimes hangs)
+class load: # read high-level operation (1cy but sometimes hangs)
 	operands = 'r{dst}, r{src}'
 	encoding = '0010 1ddd 1011 0sss'
 	def emulate(state, dst, src):
-		state.main_reg[dst] = state.memory[state.main_reg[src]]
+		tmp = state.main_reg[src]
 		state.main_reg[src] += 1
-		raise NotImplementedError
+		state.main_reg[dst] = state.memory[tmp]
 
 @instruction
 class inc: # FIXME: doesn't always increment
@@ -333,12 +333,13 @@ class align4:
 		state.main_reg[dst] = (state.main_reg[src] + 3) & (-3 & 0xFFFF)
 
 @instruction
-class op28f8: # TODO (1cy)
-	# dst is definitely a GPR
-	# always writes 0x0006 (operation code?)
-	# the '.' is correct
-	operands = 'r{dst}, a{src}'
-	encoding = '0.10 1ddd 1111 1sss'
+class getdcr: # 1cy, read direct communication register
+	# after writing the DCR, it takes 4 cycles until the new value can be read
+	operands = 'r{dst}'
+	# lowest three bits are ignored
+	encoding = '0.10 1ddd 1111 1000'
+	def emulate(state, dst):
+		state.main_reg[dst] = (state.hw_reg[7] << 8) | state.hw_reg[8]
 
 @instruction
 class opa8f8: # TODO (1cy)
@@ -349,27 +350,18 @@ class opa8f8: # TODO (1cy)
 	encoding = '1.10 1ddd 1111 1sss'
 
 @instruction
-class op4000: # TODO (1cy)
-	# src is definitely a GPR
-	# imm4=3 fucks up SHA1 hashes (didn't test other hashes)
-	# imm4=a stalls the next op4000 for 122 cycles (!)
-	# 4/5: read or write pointer?
-	# c/d: read or write pointer?
+class setreg: # 1cy
 	operands = '0x{imm4:x}, r{src}'
 	encoding = '0100 0000 0iii isss'
+	def emulate(state, dst, src):
+		state.hw_reg[dst] = state.main_reg[src] & 0xFF
 
 @instruction
-class op8000: # TODO
-	# jmm is definitely an immediate (at least 8 bits)
-	# op4000 and op8000 are the same thing, just GPR operand vs immediate operand
-	# (compare CNPx-MC-SSL-MAIN-0022:0e84 and CNPx-MC-SSL-MAIN-0026:0c59)
+class setregi:
 	operands = '0x{imm4:x}, 0x{jmm8:02x} ; {jmm8}'
 	encoding = '1i00 0jjj jjjj jiii'
-
-#@instruction
-#class opc000: # TODO
-#	operands = 'r{reg}, 0x{imm8:02x} ; {imm8}'
-#	encoding = '1100 0iii iiii irrr'
+	def emulate(state, dst, imm8):
+		state.hw_reg[dst] = imm8
 
 @instruction
 class lis: # load immediate shifted (flags are set according to the whole 16-bit register)
@@ -386,11 +378,11 @@ class andi:
 		state.main_reg[dst] = state.main_reg[lhs] & imm3_minus_one
 
 @instruction
-class output:
+class store:
 	operands = 'r{dst}, r{lhs}, r{rhs}'
 	encoding = '1.10 0ddd 01rr rlll'
 	def emulate(state, dst, lhs, rhs):
-		state.memory[state.main_reg[lhs]] = state.main_reg[rhs]
+		state.memory[state.main_reg[lhs] & 0x7FF] = state.main_reg[rhs]
 		state.main_reg[dst] = state.main_reg[lhs] + 1
 
 @instruction

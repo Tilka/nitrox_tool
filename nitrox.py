@@ -100,7 +100,7 @@ class Disassembler:
 			if args.disassemble:
 				print(f'.type {mc.mc_type}', file=output)
 			if True:
-				print(f'.version {mc.version} ; {filename}', file=output)
+				print(f'.version "{mc.version}" ; {filename}', file=output)
 			if args.disassemble:
 				print(f'.sram_addr 0x{mc.sram_addr:04x}', file=output)
 			if not args.disassemble:
@@ -149,10 +149,12 @@ class Disassembler:
 				self.seg_duration = 2
 			elif opcode == 'call':
 				self.seg_duration = 0
-			lines.append(line)
 			is_control_flow = opcode.startswith('j')
 			if is_control_flow and not args.stat and not args.diff:
-				lines[-1] += '\n'
+				line += '\n'
+			if opcode == 'emit' and int(operands[:4], 16) & 0x80:
+				line += '\n'
+			lines.append(line)
 		for i, line in enumerate(lines):
 			if not args.stat:
 				if i and not lines[i - 1].endswith('\n') and (i in self.call_xrefs or i in self.jump_xrefs):
@@ -247,7 +249,8 @@ class Assembler:
 		self.mc.mc_type = int(mc_type)
 
 	def handle_version(self, version):
-		self.mc.set_version(version)
+		# HACK
+		self.mc.set_version(version.strip('"'))
 
 	def handle_sram_addr(self, addr):
 		self.mc.sram_addr = int(addr, 16)
@@ -359,7 +362,7 @@ if __name__ == '__main__':
 	parser.add_argument('--stat', action='store_true', help='optimize output for computing instruction stats')
 	parser.add_argument('--diff', action='store_true', help='optimize output for diffing (lossy)')
 	parser.add_argument('--raw', action='store_true', help='load raw code blob')
-	parser.add_argument('--arch', type=int, help='force architecture (1, 2, 3, 5, 8), necessary when using --raw')
+	parser.add_argument('--arch', type=int, help='force architecture (1, 2, 3, 5, 8), necessary when using --raw', default=1)
 	args = parser.parse_args()
 	for filename in args.filename:
 		if args.assemble:
