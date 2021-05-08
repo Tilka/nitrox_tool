@@ -68,22 +68,24 @@ class ret: # call + ret 0: 6cy, call + ret 1: 8cy
 		state.segment = state.pc >> 13
 
 @instruction
-class op_300: # TODO 1cy
-	operands = 'r{reg}'
-	encoding = '0000 0011 0000 0rrr'
+class push: # needs one wait state before ret works
+	operands = 'r{src}'
+	encoding = '0000 0011 0000 0sss'
+	def emulate(state, src):
+		state.call_stack.push(state.main_reg[src])
 
 @instruction
-class emit_lo: # TODO
+class emit_lo:
 	operands = 'r{reg}'
 	encoding = '0000 0101 0000 0rrr'
 
 @instruction
-class emit_hi: # TODO 1cy
+class emit_hi:
 	operands = 'r{reg}'
 	encoding = '0000 0110 0000 0rrr'
 
 @instruction
-class emit: # TODO 1cy
+class emit:
 	operands = '0x{imm8:02x} ; {imm8}'
 	encoding = '0000 0111 iiii iiii'
 
@@ -342,12 +344,17 @@ class getdcr: # 1cy, read direct communication register
 		state.main_reg[dst] = (state.hw_reg[7] << 8) | state.hw_reg[8]
 
 @instruction
-class opa8f8: # TODO (1cy)
-	# dst is definitely a GPR
-	# the '.' is correct
-	# a0 reads core ID, a1 reads random stuff
-	operands = 'r{dst}, a{src}'
-	encoding = '1.10 1ddd 1111 1sss'
+class getcore:
+	operands = 'r{dst}'
+	encoding = '1.10 1ddd 1111 1000'
+	def emulate(state, dst):
+		state.main_reg[dst] = state.core_id
+@instruction
+class pop:
+	operands = 'r{dst}'
+	encoding = '1.10 1ddd 1111 1001'
+	def emulate(state, dst):
+		state.main_reg[dst] = state.call_stack.pop()
 
 @instruction
 class setreg: # 1cy

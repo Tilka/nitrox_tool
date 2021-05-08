@@ -10,12 +10,12 @@ class nop: # 1cy
 		pass
 
 @instruction
-class emit_lo: # TODO
+class emit_lo:
 	operands = 'r{reg}'
 	encoding = '0000 0000 0010 0rrr'
 
 @instruction
-class emit_hi: # TODO
+class emit_hi:
 	operands = 'r{reg}'
 	encoding = '0000 0000 0100 0rrr'
 
@@ -63,7 +63,7 @@ class ret:
 	encoding = 'i000 0001 0000 0000'
 
 @instruction
-class emit: # TODO
+class emit:
 	operands = '0x{imm8:02x}'
 	encoding = '^000 0100 iiii iiii'
 
@@ -136,9 +136,9 @@ class getdcr:
 	encoding = '^.10 1ddd 0101 0000'
 
 @instruction
-class op2860: # TODO (opa8f8 in px)
-	operands = 'r{dst}, a{src}'
-	encoding = '^.10 1ddd 0110 0sss'
+class getcore:
+	operands = 'r{dst}'
+	encoding = '^.10 1ddd 0110 0000'
 
 @instruction
 class la:
