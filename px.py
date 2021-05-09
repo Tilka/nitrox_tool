@@ -68,11 +68,12 @@ class ret: # call + ret 0: 6cy, call + ret 1: 8cy
 		state.segment = state.pc >> 13
 
 @instruction
-class push: # needs one wait state before ret works
+class push: # push to stack (overwriting the oldest entry on overflow), needs one wait state before ret works
 	operands = 'r{src}'
 	encoding = '0000 0011 0000 0sss'
 	def emulate(state, src):
-		state.call_stack.push(state.main_reg[src])
+		state.call_stack[state.stack_ptr] = state.main_reg[src]
+		state.stack_ptr = (state.stack_ptr + 1) & 31
 
 @instruction
 class emit_lo:
@@ -115,14 +116,18 @@ class add: # addition (1cy)
 	operands = 'r{dst}, r{lhs}, r{rhs}'
 	encoding = '0.10 0ddd 10rr rlll'
 	def emulate(state, dst, lhs, rhs):
-		state.main_reg[dst] = state.main_reg[lhs] + state.main_regs[rhs]
+		result = state.main_reg[lhs] + state.main_regs[rhs]
+		state.carry_flag = result > 0xFFFF
+		state.main_reg[dst] = result & 0xFFFF
 
 @instruction
-class sub: # subtraction (1cy)
+class sub: # subtraction (set carry on signed overflow)
 	operands = 'r{dst}, r{lhs}, r{rhs}'
 	encoding = '0.10 0ddd 11rr rlll'
 	def emulate(state, dst, lhs, rhs):
-		state.main_reg[dst] = state.main_reg[lhs] - state.main_regs[rhs]
+		result = state.main_reg[lhs] - state.main_regs[rhs]
+		state.carry_flag = (state.main_reg[lhs] ^ result) & 0x8000 != 0
+		state.main_reg[dst] = result & 0xFFFF
 
 @instruction
 class shli: # shift left by immediate (1cy)
@@ -231,20 +236,20 @@ class ld_lo: # load D temp register (low 8 bits)
 		state.tmp_reg[dst+24] |= state.main_reg[src] & 0xFF
 
 @instruction
-class load: # read high-level operation (1cy but sometimes hangs)
+class load: # read SRAM
 	operands = 'r{dst}, r{src}'
 	encoding = '0010 1ddd 1011 0sss'
 	def emulate(state, dst, src):
 		tmp = state.main_reg[src]
-		state.main_reg[src] += 1
+		state.main_reg[src] = (state.main_reg[src] + 1) & 0xFFFF
 		state.main_reg[dst] = state.memory[tmp]
 
 @instruction
-class inc: # FIXME: doesn't always increment
+class addc:
 	operands = 'r{dst}, r{src}'
 	encoding = '1.10 1ddd 1011 0sss'
 	def emulate(state, dst, src):
-		state.main_reg[dst] = state.main_reg[src] + 1
+		state.main_reg[dst] = (state.main_reg[src] + state.carry_flag) & 0xFFFF
 
 @instruction
 class align8: # 1cy
@@ -261,7 +266,7 @@ class align16: # 1cy
 		state.main_reg[dst] = (state.main_reg[src] + 15) & (-15 & 0xFFFF)
 
 @instruction
-class sa: # store address register to GPR (16 bits)
+class sa: # store A temp register to GPR (16 bits)
 	operands = 'r{dst}, a{src}'
 	encoding = '0.10 1ddd 1100 0sss'
 
@@ -350,21 +355,23 @@ class getcore:
 	def emulate(state, dst):
 		state.main_reg[dst] = state.core_id
 @instruction
-class pop:
+class pop: # pop item from stack or zero if stack is empty
 	operands = 'r{dst}'
 	encoding = '1.10 1ddd 1111 1001'
 	def emulate(state, dst):
-		state.main_reg[dst] = state.call_stack.pop()
+		state.stack_ptr = (state.stack_ptr - 1) & 31
+		state.main_reg[dst] = state.call_stack[state.stack_ptr]
+		state.call_stack[state.stack_ptr] = 0
 
 @instruction
-class setreg: # 1cy
+class setreg: # 1cy, load lower 8 bits from GPR into accelerator register
 	operands = '0x{imm4:x}, r{src}'
 	encoding = '0100 0000 0iii isss'
 	def emulate(state, dst, src):
 		state.hw_reg[dst] = state.main_reg[src] & 0xFF
 
 @instruction
-class setregi:
+class setregi: # load 8-bit immediate into accelerator register
 	operands = '0x{imm4:x}, 0x{jmm8:02x} ; {jmm8}'
 	encoding = '1i00 0jjj jjjj jiii'
 	def emulate(state, dst, imm8):
@@ -378,33 +385,37 @@ class lis: # load immediate shifted (flags are set according to the whole 16-bit
 		state.main_reg[dst] = (imm8 << 8) | (state.main_regs[dst] & 0xFF)
 
 @instruction
-class andi:
+class andi: # bitwise and with 3-bit immediate
 	operands = 'r{dst}, r{lhs}, {imm3_minus_one}'
 	encoding = '1.10 0ddd 00ii illl'
 	def emulate(state, dst, lhs, imm3_minus_one):
 		state.main_reg[dst] = state.main_reg[lhs] & imm3_minus_one
 
 @instruction
-class store:
+class store: # write SRAM (4096 bytes)
 	operands = 'r{dst}, r{lhs}, r{rhs}'
 	encoding = '1.10 0ddd 01rr rlll'
 	def emulate(state, dst, lhs, rhs):
 		state.memory[state.main_reg[lhs] & 0x7FF] = state.main_reg[rhs]
-		state.main_reg[dst] = state.main_reg[lhs] + 1
+		state.main_reg[dst] = (state.main_reg[lhs] + 1) & 0xFFFF
 
 @instruction
-class addi:
+class addi: # add 3-bit immediate (set carry on unsigned overflow)
 	operands = 'r{dst}, r{lhs}, {imm3_minus_one}'
 	encoding = '1.10 0ddd 10ii illl'
 	def emulate(state, dst, lhs, imm3_minus_one):
-		state.main_regs[dst] = state.main_regs[lhs] + imm3_minus_one
+		result = state.main_reg[lhs] + imm3_minus_one
+		state.carry_flag = result > 0xFFFF
+		state.main_reg[dst] = result & 0xFFFF
 
 @instruction
-class subi:
+class subi: # subtract 3-bit immediate (set carry on signed overflow)
 	operands = 'r{dst}, r{lhs}, {imm3_minus_one}'
 	encoding = '1.10 0ddd 11ii illl'
 	def emulate(state, dst, lhs, imm3_minus_one):
-		state.main_regs[dst] = state.main_regs[lhs] - imm3_minus_one
+		result = state.main_reg[lhs] - imm3_minus_one
+		state.carry_flag = (state.main_reg[lhs] ^ result) & 0x8000 != 0
+		state.main_reg[dst] = result & 0xFFFF
 
 #@instruction
 #class dw:
