@@ -125,8 +125,8 @@ class sub: # subtraction (set carry on signed overflow)
 	operands = 'r{dst}, r{lhs}, r{rhs}'
 	encoding = '0.10 0ddd 11rr rlll'
 	def emulate(state, dst, lhs, rhs):
-		result = state.main_reg[lhs] - state.main_regs[rhs]
-		state.carry_flag = (state.main_reg[lhs] ^ result) & 0x8000 != 0
+		result = state.main_reg[lhs] + (~state.main_regs[rhs] & 0xFFFF) + 1
+		state.carry_flag = result >> 16
 		state.main_reg[dst] = result & 0xFFFF
 
 @instruction
@@ -241,7 +241,9 @@ class load: # read SRAM
 	encoding = '0010 1ddd 1011 0sss'
 	def emulate(state, dst, src):
 		tmp = state.main_reg[src]
-		state.main_reg[src] = (state.main_reg[src] + 1) & 0xFFFF
+		result = tmp + 1
+		state.carry_flag = result >> 16
+		state.main_reg[src] = result & 0xFFFF
 		state.main_reg[dst] = state.memory[tmp]
 
 @instruction
@@ -249,7 +251,9 @@ class addc:
 	operands = 'r{dst}, r{src}'
 	encoding = '1.10 1ddd 1011 0sss'
 	def emulate(state, dst, src):
-		state.main_reg[dst] = (state.main_reg[src] + state.carry_flag) & 0xFFFF
+		result = state.main_reg[src] + state.carry_flag
+		state.carry_flag = result >> 16
+		state.main_reg[dst] = result & 0xFFFF
 
 @instruction
 class align8: # 1cy
@@ -397,7 +401,9 @@ class store: # write SRAM (4096 bytes)
 	encoding = '1.10 0ddd 01rr rlll'
 	def emulate(state, dst, lhs, rhs):
 		state.memory[state.main_reg[lhs] & 0x7FF] = state.main_reg[rhs]
-		state.main_reg[dst] = (state.main_reg[lhs] + 1) & 0xFFFF
+		result = state.main_reg[lhs] + 1
+		state.carry_flag = result >> 16
+		state.main_reg[dst] = result & 0xFFFF
 
 @instruction
 class addi: # add 3-bit immediate (set carry on unsigned overflow)
@@ -413,8 +419,8 @@ class subi: # subtract 3-bit immediate (set carry on signed overflow)
 	operands = 'r{dst}, r{lhs}, {imm3_minus_one}'
 	encoding = '1.10 0ddd 11ii illl'
 	def emulate(state, dst, lhs, imm3_minus_one):
-		result = state.main_reg[lhs] - imm3_minus_one
-		state.carry_flag = (state.main_reg[lhs] ^ result) & 0x8000 != 0
+		result = state.main_reg[lhs] + (~imm3_minus_one & 0xFFFF) + 1
+		state.carry_flag = result >> 16
 		state.main_reg[dst] = result & 0xFFFF
 
 #@instruction
