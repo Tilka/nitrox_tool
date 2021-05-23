@@ -19,12 +19,12 @@ class seg: # 1cy
 @instruction
 class wait_load: # 3cy, used to wait for loads
 	operands = ''
-	encoding = '0000 0000 1000 0000'
+	encoding = '0000 0000 1xxx xxxx'
 
 @instruction
 class wait_other: # 5cy, used to wait for register writes (e.g. to use getdcr)
 	operands = ''
-	encoding = '0000 0001 1000 0000'
+	encoding = '0000 0001 1xxx xxxx'
 
 @instruction
 class jz: # taken: 5cy, not taken: 1cy
@@ -62,7 +62,7 @@ class call: # call + ret: 6-8cy
 @instruction
 class ret: # call + ret 0: 6cy, call + ret 1: 8cy
 	operands = '{imm1}'
-	encoding = '0000 0010 i000 0000'
+	encoding = '0000 0010 ixxx xxxx'
 	def emulate(state, imm1): # TODO: what does imm1 do?
 		state.pc = state.call_stack.pop()
 		state.segment = state.pc >> 13
@@ -70,20 +70,31 @@ class ret: # call + ret 0: 6cy, call + ret 1: 8cy
 @instruction
 class push: # push to stack (overwriting the oldest entry on overflow), needs one wait state before ret works
 	operands = 'r{src}'
-	encoding = '0000 0011 0000 0sss'
+	encoding = '0000 0011 xxxx 0sss'
 	def emulate(state, src):
 		state.call_stack[state.stack_ptr] = state.main_reg[src]
 		state.stack_ptr = (state.stack_ptr + 1) & 31
 
 @instruction
+class pushf:
+	operands = '{imm1}'
+	encoding = '0000 0011 ixxx 1xxx'
+	def emulate(state, imm1):
+		value = 1 - state.zero_flag
+		if imm1 and state.sign_flag:
+			value |= 0x8000
+		state.call_stack[state.stack_ptr] = value
+		state.stack_ptr = (state.stack_ptr + 1) & 31
+
+@instruction
 class emit_lo:
 	operands = 'r{reg}'
-	encoding = '0000 0101 0000 0rrr'
+	encoding = '0000 0101 xxxx xrrr'
 
 @instruction
 class emit_hi:
 	operands = 'r{reg}'
-	encoding = '0000 0110 0000 0rrr'
+	encoding = '0000 0110 xxxx xrrr'
 
 @instruction
 class emit:
@@ -121,7 +132,7 @@ class add: # addition (1cy)
 		state.main_reg[dst] = result & 0xFFFF
 
 @instruction
-class sub: # subtraction (set carry on signed overflow)
+class sub: # subtraction
 	operands = 'r{dst}, r{lhs}, r{rhs}'
 	encoding = '0.10 0ddd 11rr rlll'
 	def emulate(state, dst, lhs, rhs):
@@ -146,35 +157,35 @@ class shri: # logical shift right by immediate (1cy)
 @instruction
 class la: # load A temp register (16 bits, 1cy)
 	operands = 'a{dst}, r{src}'
-	encoding = '0010 1ddd 1000 0sss'
+	encoding = '0x10 1ddd 1000 0sss'
 	def emulate(state, dst, src):
 		state.temp_reg[dst] = state.main_reg[src]
 
 @instruction
 class lb: # load B temp register (16 bits, 1cy)
 	operands = 'b{dst}, r{src}'
-	encoding = '0010 1ddd 1000 1sss'
+	encoding = '0x10 1ddd 1000 1sss'
 	def emulate(state, dst, src):
 		state.temp_reg[dst] = state.main_reg[src]
 
 @instruction
 class lc: # load C temp register (16 bits, 1cy)
 	operands = 'c{dst}, r{src}'
-	encoding = '1010 1ddd 1000 0sss'
+	encoding = '1x10 1ddd 1000 0sss'
 	def emulate(state, dst, src):
 		state.temp_reg[dst] = state.main_reg[src]
 
 @instruction
 class ld: # load D temp register (16 bits, 1cy)
 	operands = 'd{dst}, r{src}'
-	encoding = '1010 1ddd 1000 1sss'
+	encoding = '1x10 1ddd 1000 1sss'
 	def emulate(state, dst, src):
 		state.temp_reg[dst] = state.main_reg[src]
 
 @instruction
 class la_hi: # load A temp register (high 8 bits)
 	operands = 'a{dst}, r{src}'
-	encoding = '0010 1ddd 1001 0sss'
+	encoding = '0x10 1ddd 1001 0sss'
 	def emulate(state, dst, src):
 		state.addr_reg[dst] &= 0xFF
 		state.addr_reg[dst] |= (state.main_reg[src] & 0xFF) << 8
@@ -182,7 +193,7 @@ class la_hi: # load A temp register (high 8 bits)
 @instruction
 class lb_hi: # load B temp register (high 8 bits)
 	operands = 'b{dst}, r{src}'
-	encoding = '0010 1ddd 1001 1sss'
+	encoding = '0x10 1ddd 1001 1sss'
 	def emulate(state, dst, src):
 		state.addr_reg[dst] &= 0xFF
 		state.addr_reg[dst] |= (state.main_reg[src] & 0xFF) << 8
@@ -190,7 +201,7 @@ class lb_hi: # load B temp register (high 8 bits)
 @instruction
 class lc_hi: # load C temp register (high 8 bits)
 	operands = 'c{dst}, r{src}'
-	encoding = '1010 1ddd 1001 0sss'
+	encoding = '1x10 1ddd 1001 0sss'
 	def emulate(state, dst, src):
 		state.addr_reg[dst] &= 0xFF
 		state.addr_reg[dst] |= (state.main_reg[src] & 0xFF) << 8
@@ -198,7 +209,7 @@ class lc_hi: # load C temp register (high 8 bits)
 @instruction
 class ld_hi: # load D temp register (high 8 bits)
 	operands = 'd{dst}, r{src}'
-	encoding = '1010 1ddd 1001 1sss'
+	encoding = '1x10 1ddd 1001 1sss'
 	def emulate(state, dst, src):
 		state.addr_reg[dst] &= 0xFF
 		state.addr_reg[dst] |= (state.main_reg[src] & 0xFF) << 8
@@ -206,7 +217,7 @@ class ld_hi: # load D temp register (high 8 bits)
 @instruction
 class la_lo: # load A temp register (low 8 bits)
 	operands = 'a{dst}, r{src}'
-	encoding = '0010 1ddd 1010 0sss'
+	encoding = '0x10 1ddd 1010 0sss'
 	def emulate(state, dst, src):
 		state.addr_reg[dst] &= 0xFF00
 		state.addr_reg[dst] |= state.main_reg[src] & 0xFF
@@ -214,7 +225,7 @@ class la_lo: # load A temp register (low 8 bits)
 @instruction
 class lb_lo: # load B temp register (low 8 bits)
 	operands = 'b{dst}, r{src}'
-	encoding = '0010 1ddd 1010 1sss'
+	encoding = '0x10 1ddd 1010 1sss'
 	def emulate(state, dst, src):
 		state.tmp_reg[dst+8] &= 0xFF00
 		state.tmp_reg[dst+8] |= state.main_reg[src] & 0xFF
@@ -222,7 +233,7 @@ class lb_lo: # load B temp register (low 8 bits)
 @instruction
 class lc_lo: # load C temp register (low 8 bits)
 	operands = 'c{dst}, r{src}'
-	encoding = '1010 1ddd 1010 0sss'
+	encoding = '1x10 1ddd 1010 0sss'
 	def emulate(state, dst, src):
 		state.tmp_reg[dst+16] &= 0xFF00
 		state.tmp_reg[dst+16] |= state.main_reg[src] & 0xFF
@@ -230,7 +241,7 @@ class lc_lo: # load C temp register (low 8 bits)
 @instruction
 class ld_lo: # load D temp register (low 8 bits)
 	operands = 'd{dst}, r{src}'
-	encoding = '1010 1ddd 1010 1sss'
+	encoding = '1x10 1ddd 1010 1sss'
 	def emulate(state, dst, src):
 		state.tmp_reg[dst+24] &= 0xFF00
 		state.tmp_reg[dst+24] |= state.main_reg[src] & 0xFF
@@ -238,12 +249,13 @@ class ld_lo: # load D temp register (low 8 bits)
 @instruction
 class load: # read SRAM
 	operands = 'r{dst}, r{src}'
-	encoding = '0010 1ddd 1011 0sss'
+	encoding = '0.10 1ddd 1011 0sss'
 	def emulate(state, dst, src):
 		tmp = state.main_reg[src]
 		result = tmp + 1
 		state.carry_flag = result >> 16
 		state.main_reg[src] = result & 0xFFFF
+		state.update_flags(state.main_reg[src])
 		state.main_reg[dst] = state.memory[tmp]
 
 @instruction
@@ -347,21 +359,21 @@ class align4:
 class getdcr: # 1cy, read direct communication register
 	# after writing the DCR, it takes 4 cycles until the new value can be read
 	operands = 'r{dst}'
-	# lowest three bits are ignored
-	encoding = '0.10 1ddd 1111 1000'
+	encoding = '0.10 1ddd 1111 1xxx'
 	def emulate(state, dst):
 		state.main_reg[dst] = (state.hw_reg[7] << 8) | state.hw_reg[8]
 
 @instruction
 class getcore:
 	operands = 'r{dst}'
-	encoding = '1.10 1ddd 1111 1000'
+	encoding = '1.10 1ddd 1111 1xx0'
 	def emulate(state, dst):
 		state.main_reg[dst] = state.core_id
+
 @instruction
 class pop: # pop item from stack or zero if stack is empty
 	operands = 'r{dst}'
-	encoding = '1.10 1ddd 1111 1001'
+	encoding = '1.10 1ddd 1111 1xx1'
 	def emulate(state, dst):
 		state.stack_ptr = (state.stack_ptr - 1) & 31
 		state.main_reg[dst] = state.call_stack[state.stack_ptr]

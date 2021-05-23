@@ -143,21 +143,21 @@ class getcore:
 @instruction
 class la:
 	operands = 'a{dst}, r{src}'
-	encoding = '^010 1ddd 1000 0sss'
+	encoding = '^x10 1ddd 1000 0sss'
 	def emulate(state, dst, src):
 		state.temp_reg[dst] = state.main_reg[src]
 
 @instruction
 class lb:
 	operands = 'b{dst}, r{src}'
-	encoding = '^010 1ddd 1000 1sss'
+	encoding = '^x10 1ddd 1000 1sss'
 	def emulate(state, dst, src):
 		state.temp_reg[dst] = state.main_reg[src]
 
 @instruction
 class la_hi:
 	operands = 'a{dst}, r{src}'
-	encoding = '^010 1ddd 1001 0sss'
+	encoding = '^x10 1ddd 1001 0sss'
 	def emulate(state, dst, src):
 		state.addr_reg[dst] &= 0xFF
 		state.addr_reg[dst] |= (state.main_reg[src] & 0xFF) << 8
@@ -165,14 +165,14 @@ class la_hi:
 @instruction
 class lb_hi:
 	operands = 'b{dst}, r{src}'
-	encoding = '^010 1ddd 1001 1sss'
+	encoding = '^x10 1ddd 1001 1sss'
 	def emulate(state, dst, src):
 		state.addr_reg[dst] &= 0xFF
 		state.addr_reg[dst] |= (state.main_reg[src] & 0xFF) << 8
 @instruction
 class la_lo:
 	operands = 'a{dst}, r{src}'
-	encoding = '^010 1ddd 1010 0sss'
+	encoding = '^x10 1ddd 1010 0sss'
 	def emulate(state, dst, src):
 		state.addr_reg[dst] &= 0xFF00
 		state.addr_reg[dst] |= state.main_reg[src] & 0xFF
@@ -180,7 +180,7 @@ class la_lo:
 @instruction
 class lb_lo:
 	operands = 'b{dst}, r{src}'
-	encoding = '^010 1ddd 1010 1sss'
+	encoding = '^x10 1ddd 1010 1sss'
 	def emulate(state, dst, src):
 		state.tmp_reg[dst+8] &= 0xFF00
 		state.tmp_reg[dst+8] |= state.main_reg[src] & 0xFF

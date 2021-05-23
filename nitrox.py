@@ -90,6 +90,17 @@ def do_import(gen):
 		raise NotImplementedError(gen)
 
 class Disassembler:
+	def is_valid_data_hash(self, data):
+		from Crypto.Cipher import DES3
+		iv = data[8:8+8]
+		key = data[16:16+3*8]
+		payload = data[8:]
+		try:
+			des3_hash = DES3.new(key, DES3.MODE_CBC, iv).encrypt(payload)[-8:]
+		except ValueError:
+			return False
+		return des3_hash == data[:8]
+
 	def __init__(self, filename, args):
 		self.mc = mc = Microcode(filename, args)
 		if args.output:
@@ -166,11 +177,19 @@ class Disassembler:
 			print(line, file=output)
 		if args.stat:
 			return
+		if len(mc.data):
+			hash_offset = 0
+			hash_valid = self.is_valid_data_hash(mc.data[hash_offset:])
+			if not hash_valid:
+				# some microcodes have 128 bytes of high-entropy data at the start of the data section
+				hash_offset = 0x80
+				hash_valid = self.is_valid_data_hash(mc.data[hash_offset:])
 		for i in range(0, len(mc.data), 8):
 			word = mc.data[i:i+8]
 			hex_word = ' '.join([f'{byte:02x}' for byte in word])
 			readable = ''.join([chr(c) if c < 127 and c >= 32 else '.' for c in word])
-			print(f'\t.data {hex_word} ; {i:04x}: {readable}', file=output)
+			hash_check = ' (valid data section hash)' if i == hash_offset and hash_valid else ''
+			print(f'\t.data {hex_word} ; {i:04x}: {readable}{hash_check}', file=output)
 		for i in range(0, len(mc.signature), 8):
 			word = mc.signature[i:i+8]
 			hex_word = ' '.join([f'{byte:02x}' for byte in word])
@@ -346,7 +365,7 @@ class Microcode:
 		assert len(self.code) < 13354
 		with open(path, 'wb+') as f:
 			f.write(struct.pack('>B31sIIQ', self.mc_type, self.version.encode('ascii'), len(self.code), len(self.data), self.sram_addr))
-			code = b''.join([struct.pack('>I', i << 17 | self.compute_parity(word) << 16 | word) for i, word in enumerate(self.code)])
+			code = b''.join([struct.pack('>I', ((i << 17) & 0xFFFE0000) | self.compute_parity(word) << 16 | word) for i, word in enumerate(self.code)])
 			f.write(self.pad16(code))
 			f.write(self.pad16(self.data))
 			f.write(self.signature)
