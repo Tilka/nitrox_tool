@@ -84,7 +84,7 @@ def instruction(cls):
 def do_import(gen):
 	if gen == 1:
 		import lite
-	elif gen == 2 or gen == 3 or gen == 5 or gen == 8:
+	elif gen in (2, 3, 5, 8, 9):
 		import px
 	else:
 		raise NotImplementedError(gen)
@@ -303,7 +303,9 @@ class Microcode:
 			(2, ['CNPx']),
 			(3, ['CN35x', 'CNN35x']),
 			(5, ['CNN5x']),
-			(8, ['CNT8x', 'O8x'])]
+			(8, ['CNT8x', 'O8x']),
+			(9, ['OCPT']),
+		]
 		for gen, prefixes in generations:
 			if prefix in prefixes:
 				self.gen = gen
@@ -327,7 +329,7 @@ class Microcode:
 			self.gen = args.arch
 			self.set_inst_size()
 			return
-		if d[4:7] == b'O8x':
+		if d[4:8] in (b'O8x-', b'OCPT'):
 			self.mc_type, version, code_len, data_len, self.sram_addr = struct.unpack_from('>I44sIIQ', d)
 			code_start = 0x40
 		else:
