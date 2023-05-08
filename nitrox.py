@@ -3,9 +3,11 @@
 import binascii
 import re
 import struct
+import subprocess
 import sys
 
 from inst import *
+from contextlib import contextmanager
 
 class Operand:
 	def __init__(self, desc, enc):
@@ -101,12 +103,8 @@ class Disassembler:
 			return False
 		return des3_hash == data[:8]
 
-	def __init__(self, filename, args):
+	def __init__(self, filename, args, output):
 		self.mc = mc = Microcode(filename, args)
-		if args.output:
-			output = open(args.output, 'w+')
-		else:
-			output = sys.stdout
 		if not args.stat:
 			if args.disassemble:
 				print(f'.type {mc.mc_type}', file=output)
@@ -372,6 +370,21 @@ class Microcode:
 			f.write(self.pad16(self.data))
 			f.write(self.signature)
 
+@contextmanager
+def pagination(output):
+	if output:
+		yield open(output, 'w+')
+	elif sys.stdout.isatty():
+		try:
+			less = subprocess.Popen(['less', '-RFSX'], stdin=subprocess.PIPE, text=True)
+			yield less.stdin
+		except BrokenPipeError:
+			pass
+		finally:
+			less.communicate()
+	else:
+		yield sys.stdout
+
 if __name__ == '__main__':
 	import argparse
 	parser = argparse.ArgumentParser()
@@ -385,8 +398,11 @@ if __name__ == '__main__':
 	parser.add_argument('--raw', action='store_true', help='load raw code blob')
 	parser.add_argument('--arch', type=int, help='force architecture (1, 2, 3, 5, 8), necessary when using --raw', default=1)
 	args = parser.parse_args()
-	for filename in args.filename:
-		if args.assemble:
+
+	if args.assemble:
+		for filename in args.filename:
 			Assembler(filename, args)
-		else:
-			Disassembler(filename, args)
+	else:
+		with pagination(args.output) as output:
+			for filename in args.filename:
+				Disassembler(filename, args, output)
