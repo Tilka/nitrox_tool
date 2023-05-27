@@ -93,7 +93,10 @@ def do_import(gen):
 
 class Disassembler:
 	def is_valid_data_hash(self, data):
-		from Crypto.Cipher import DES3
+		try:
+			from Crypto.Cipher import DES3
+		except ImportError:
+			from Cryptodome.Cipher import DES3
 		iv = data[8:8+8]
 		key = data[16:16+3*8]
 		payload = data[8:]
@@ -107,7 +110,7 @@ class Disassembler:
 		self.mc = mc = Microcode(filename, args)
 		if not args.stat:
 			if args.disassemble:
-				print(f'.type {mc.mc_type}', file=output)
+				print(f'.type 0x{mc.mc_type:x}', file=output)
 			if True:
 				print(f'.version "{mc.version}" ; {filename}', file=output)
 			if args.disassemble:
@@ -179,7 +182,7 @@ class Disassembler:
 			hash_offset = 0
 			hash_valid = self.is_valid_data_hash(mc.data[hash_offset:])
 			if not hash_valid:
-				# some microcodes have 128 bytes of high-entropy data at the start of the data section
+				# some microcodes have 128 bytes worth of SHA-384/512 init constants before the hashed part of the data section
 				hash_offset = 0x80
 				hash_valid = self.is_valid_data_hash(mc.data[hash_offset:])
 		for i in range(0, len(mc.data), 8):
@@ -362,10 +365,13 @@ class Microcode:
 		return blob + (b'' if len_mod_16 == 0 else b'\x00' * (16 - len_mod_16))
 
 	def save(self, path):
-		assert len(self.code) < 13354
+		#assert len(self.code) < 13354
 		with open(path, 'wb+') as f:
 			f.write(struct.pack('>B31sIIQ', self.mc_type, self.version.encode('ascii'), len(self.code), len(self.data), self.sram_addr))
-			code = b''.join([struct.pack('>I', ((i << 17) & 0xFFFE0000) | self.compute_parity(word) << 16 | word) for i, word in enumerate(self.code)])
+			if self.gen < 5:
+				code = b''.join([struct.pack('>I', ((i << 17) & 0xFFFE0000) | self.compute_parity(word) << 16 | word) for i, word in enumerate(self.code)])
+			else:
+				code = b''.join([struct.pack('<H', i) for i in self.code])
 			f.write(self.pad16(code))
 			f.write(self.pad16(self.data))
 			f.write(self.signature)
